@@ -1,5 +1,6 @@
 package com.tabgl.kaleido.ui
 
+import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -7,10 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,32 +18,46 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
 
-/** A square thumbnail that gently squishes when pressed, for a fluid feel. */
+/** "1 item" or "N items". */
+fun itemCountLabel(count: Int): String = if (count == 1) "1 item" else "$count items"
+
+/** Coil request for a thumbnail, with a crossfade so images fade in as they load. */
+@Composable
+private fun rememberThumbnailRequest(uri: Uri): ImageRequest {
+    val context = LocalContext.current
+    return remember(uri) {
+        ImageRequest.Builder(context)
+            .data(uri)
+            .crossfade(true)
+            .build()
+    }
+}
+
+/** A square thumbnail that squishes when pressed, for a fluid feel. */
 @Composable
 fun PhotoTile(photo: Photo, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 600f),
         label = "tileScale",
     )
 
     AsyncImage(
-        model = photo.uri,
+        model = rememberThumbnailRequest(photo.uri),
         contentDescription = photo.name,
         contentScale = ContentScale.Crop,
         modifier = Modifier
@@ -56,13 +69,14 @@ fun PhotoTile(photo: Photo, onClick: () -> Unit) {
     )
 }
 
+/** An album card: a large rounded cover with the name and item count beneath. */
 @Composable
 fun AlbumTile(album: Album, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 600f),
         label = "albumScale",
     )
 
@@ -74,7 +88,7 @@ fun AlbumTile(album: Album, onClick: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         AsyncImage(
-            model = album.cover.uri,
+            model = rememberThumbnailRequest(album.cover.uri),
             contentDescription = album.name,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -92,34 +106,10 @@ fun AlbumTile(album: Album, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 4.dp),
         )
         Text(
-            text = "${album.count} items",
+            text = itemCountLabel(album.count),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
-    }
-}
-
-/** Full-screen photo view. Tap anywhere or press back to close. */
-@Composable
-fun PhotoViewer(photo: Photo, onDismiss: () -> Unit) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color.Black)
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center,
-        ) {
-            AsyncImage(
-                model = photo.uri,
-                contentDescription = photo.name,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
     }
 }

@@ -3,16 +3,20 @@ package com.tabgl.kaleido.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.Collections
+import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -79,23 +84,31 @@ private fun NavItem(
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "navContainer",
     )
-    val content = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val content by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        label = "navContent",
+    )
 
     Row(
         modifier = Modifier
             .clip(CircleShape)
             .background(container)
-            .clickable(onClick = onClick)
+            .selectable(selected = selected, onClick = onClick, role = Role.Tab)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = content)
-        AnimatedVisibility(visible = selected) {
+        AnimatedVisibility(
+            visible = selected,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally(),
+        ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,

@@ -4,6 +4,25 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release signing. The keystore is never committed. Provide it through environment variables:
+//   KALEIDO_KEYSTORE_PATH   path to the .jks/.keystore file
+//   KALEIDO_STORE_PASSWORD  keystore password
+//   KALEIDO_KEY_ALIAS       key alias inside the keystore
+//   KALEIDO_KEY_PASSWORD    key password
+// Local builds without a keystore fall back to the debug key. CI requires the real key
+// (KALEIDO_REQUIRE_RELEASE_KEY=true) so it never ships an APK signed with the debug key.
+val releaseKeystorePath: String? = System.getenv("KALEIDO_KEYSTORE_PATH")
+val hasReleaseKey: Boolean = releaseKeystorePath != null &&
+    file(releaseKeystorePath).let { it.isFile && it.length() > 0L }
+val requireReleaseKey: Boolean = System.getenv("KALEIDO_REQUIRE_RELEASE_KEY") == "true"
+
+if (requireReleaseKey && !hasReleaseKey) {
+    throw GradleException(
+        "Release keystore missing. Set the ANDROID_KEYSTORE_BASE64 secret and the " +
+            "KALEIDO_STORE_PASSWORD, KALEIDO_KEY_ALIAS and KALEIDO_KEY_PASSWORD secrets."
+    )
+}
+
 android {
     namespace = "com.tabgl.kaleido"
     compileSdk = 35
@@ -26,12 +45,25 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKey) {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = System.getenv("KALEIDO_STORE_PASSWORD")
+                keyAlias = System.getenv("KALEIDO_KEY_ALIAS")
+                keyPassword = System.getenv("KALEIDO_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the APK is installable without a keystore.
-            // Replace with a real signingConfig before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

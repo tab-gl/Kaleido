@@ -60,7 +60,7 @@ jobs:
 
       - name: Compile Kotlin (debug, no signing)
         run: |
-          set +o pipefail
+          set +e
           gradle :app:compileDebugKotlin --no-daemon --stacktrace > compile.log 2>&1
           status=$?
           cat compile.log

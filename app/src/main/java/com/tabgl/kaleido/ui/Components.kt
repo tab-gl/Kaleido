@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -64,6 +65,7 @@ private fun rememberThumbnailRequest(uri: Uri): ImageRequest {
  * A square thumbnail. It squishes when pressed. Long-press fires [onLongClick] with a haptic tick.
  * When [selected], the photo shrinks inside its frame and gets a tinted overlay and a check badge.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PhotoTile(
     photo: Photo,
@@ -137,6 +139,7 @@ fun PhotoTile(
 }
 
 /** An album card: a large rounded cover with the name and item count beneath. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AlbumTile(album: Album, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }

@@ -57,6 +57,16 @@ jobs:
             echo "::error::Missing repository secrets: ${missing[*]}"
             exit 1
           fi
+          # Check the secrets against the keystore before the build, so a wrong value is named clearly.
+          if ! keytool -list -keystore "$RUNNER_TEMP/kaleido-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error title=Signing secret mismatch::ANDROID_KEYSTORE_PASSWORD does not open the keystore in ANDROID_KEYSTORE_BASE64."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/kaleido-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error title=Signing secret mismatch::ANDROID_KEY_ALIAS is not an entry in the keystore (expected: kaleido)."
+            exit 1
+          fi
+          echo "Signing secrets match the keystore. Note: for this keystore type ANDROID_KEY_PASSWORD must equal ANDROID_KEYSTORE_PASSWORD."
 
       - name: Compile Kotlin (debug, no signing)
         run: |

@@ -123,13 +123,12 @@ fun PhotoViewer(
 
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val newZoom = (zoom.value * zoomChange).coerceIn(1f, MAX_ZOOM)
-        zoom.snapTo(newZoom)
-        if (newZoom > 1f) {
-            panX.snapTo(panX.value + panChange.x)
-            panY.snapTo(panY.value + panChange.y)
-        } else {
-            panX.snapTo(0f)
-            panY.snapTo(0f)
+        val newPanX = if (newZoom > 1f) panX.value + panChange.x else 0f
+        val newPanY = if (newZoom > 1f) panY.value + panChange.y else 0f
+        scope.launch {
+            zoom.snapTo(newZoom)
+            panX.snapTo(newPanX)
+            panY.snapTo(newPanY)
         }
     }
 

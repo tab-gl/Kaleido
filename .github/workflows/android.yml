@@ -59,7 +59,7 @@ jobs:
           fi
           # Check the secrets against the keystore before the build, so a wrong value is named clearly.
           if ! keytool -list -keystore "$RUNNER_TEMP/kaleido-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
-            echo "::error title=Signing secret mismatch::ANDROID_KEYSTORE_PASSWORD does not open the keystore in ANDROID_KEYSTORE_BASE64."
+            echo "::error title=Signing secret mismatch::The keystore from ANDROID_KEYSTORE_BASE64 did not open with ANDROID_KEYSTORE_PASSWORD. Re-enter both secrets from the current secrets file."
             exit 1
           fi
           if ! keytool -list -keystore "$RUNNER_TEMP/kaleido-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then

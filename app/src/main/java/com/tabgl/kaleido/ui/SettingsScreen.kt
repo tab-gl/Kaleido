@@ -152,12 +152,6 @@ fun SettingsScreen(settings: AppSettings) {
     }
 }
 
-private fun sortLabel(order: SortOrder): String = when (order) {
-    SortOrder.NEWEST -> "Newest first"
-    SortOrder.OLDEST -> "Oldest first"
-    SortOrder.NAME -> "Name A to Z"
-}
-
 @Composable
 private fun SectionTitle(text: String) {
     Text(

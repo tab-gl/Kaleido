@@ -12,7 +12,14 @@ plugins {
 // Local builds without a keystore fall back to the debug key. CI requires the real key
 // (KALEIDO_REQUIRE_RELEASE_KEY=true) so it never ships an APK signed with the debug key.
 val releaseKeystorePath: String? = System.getenv("KALEIDO_KEYSTORE_PATH")
+val releaseStorePassword: String? = System.getenv("KALEIDO_STORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("KALEIDO_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("KALEIDO_KEY_PASSWORD")
+// All four values or none: a partial setup falls back to debug, never to a broken release config.
 val hasReleaseKey: Boolean = releaseKeystorePath != null &&
+    releaseStorePassword != null &&
+    releaseKeyAlias != null &&
+    releaseKeyPassword != null &&
     file(releaseKeystorePath).let { it.isFile && it.length() > 0L }
 val requireReleaseKey: Boolean = System.getenv("KALEIDO_REQUIRE_RELEASE_KEY") == "true"
 
@@ -49,9 +56,9 @@ android {
         create("release") {
             if (hasReleaseKey) {
                 storeFile = file(releaseKeystorePath!!)
-                storePassword = System.getenv("KALEIDO_STORE_PASSWORD")
-                keyAlias = System.getenv("KALEIDO_KEY_ALIAS")
-                keyPassword = System.getenv("KALEIDO_KEY_PASSWORD")
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }

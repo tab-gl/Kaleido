@@ -11,8 +11,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideIntoContainer
+import androidx.compose.animation.slideOutOfContainer
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -56,6 +59,10 @@ private val gridSizes = listOf(3, 4, 5)
 /** Opens this app's page in system settings, where the user can grant photo access. */
 private fun appSettingsIntent(packageName: String): Intent =
     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+
+/** Depth in the navigation: Photos 0, Albums 1, an album's photos 2. Used to pick the slide direction. */
+private fun screenRank(state: Pair<Tab, String?>): Int =
+    if (state.second != null) 2 else state.first.ordinal
 
 @Composable
 fun KaleidoApp() {
@@ -157,7 +164,16 @@ fun KaleidoApp() {
 
             else -> AnimatedContent(
                 targetState = tab to openAlbum,
-                transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(160)) },
+                // Forward (Photos → Albums → an album) slides in from the right; back slides from the left.
+                transitionSpec = {
+                    val towards = if (screenRank(targetState) > screenRank(initialState)) {
+                        SlideDirection.Left
+                    } else {
+                        SlideDirection.Right
+                    }
+                    (slideIntoContainer(towards, tween(320)) + fadeIn(tween(220))) togetherWith
+                        (slideOutOfContainer(towards, tween(320)) + fadeOut(tween(160)))
+                },
                 label = "screen",
             ) { (currentTab, album) ->
                 when {

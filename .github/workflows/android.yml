@@ -59,7 +59,16 @@ jobs:
           fi
 
       - name: Compile Kotlin (debug, no signing)
-        run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
+        run: |
+          set +o pipefail
+          gradle :app:compileDebugKotlin --no-daemon --stacktrace > compile.log 2>&1
+          status=$?
+          cat compile.log
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E "^e: |What went wrong|Could not|Execution failed" compile.log | head -40 | tr '\n' '|')
+            echo "::error title=Compile errors::${summary:-no e: lines found, see log}"
+          fi
+          exit "$status"
 
       - name: Build release APKs (arm64-v8a, armeabi-v7a)
         env:

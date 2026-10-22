@@ -61,6 +61,8 @@ fun PhotoViewer(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
+                // Keep the neighbouring photos ready so swipes don't show a blank frame.
+                beyondViewportPageCount = 1,
             ) { page ->
                 val photo = photos[page]
                 AsyncImage(

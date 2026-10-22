@@ -67,7 +67,12 @@ fun KaleidoApp() {
 
     LaunchedEffect(granted) {
         if (granted) {
-            photos = MediaRepository.loadPhotos(context)
+            // If the query fails, show the empty state rather than spinning forever.
+            photos = try {
+                MediaRepository.loadPhotos(context)
+            } catch (e: Exception) {
+                emptyList()
+            }
             loaded = true
         }
     }

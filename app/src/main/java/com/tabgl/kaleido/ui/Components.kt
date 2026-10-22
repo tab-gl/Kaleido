@@ -30,6 +30,8 @@ import coil.request.ImageRequest
 import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
 
+private const val THUMBNAIL_PX = 320
+
 /** "1 item" or "N items". */
 fun itemCountLabel(count: Int): String = if (count == 1) "1 item" else "$count items"
 
@@ -40,6 +42,8 @@ private fun rememberThumbnailRequest(uri: Uri): ImageRequest {
     return remember(uri) {
         ImageRequest.Builder(context)
             .data(uri)
+            // Decode thumbnails at grid size, not full resolution: smoother scrolling, less memory.
+            .size(THUMBNAIL_PX, THUMBNAIL_PX)
             .crossfade(true)
             .build()
     }

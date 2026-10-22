@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -92,6 +91,8 @@ fun GalleryScreen(
     onBack: (() -> Unit)? = null,
 ) {
     val sections = remember(photos) { photos.toSections() }
+    // Index lookup per tap, instead of scanning the whole list for every tile.
+    val indexById = remember(photos) { photos.withIndex().associate { (index, photo) -> photo.id to index } }
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(title = title, subtitle = itemCountLabel(photos.size), onBack = onBack)
@@ -113,7 +114,7 @@ fun GalleryScreen(
                         SectionHeader(label = section.label, count = section.photos.size)
                     }
                     items(section.photos, key = { it.id }) { photo ->
-                        PhotoTile(photo = photo, onClick = { onOpen(photos.indexOf(photo)) })
+                        PhotoTile(photo = photo, onClick = { onOpen(indexById.getValue(photo.id)) })
                     }
                 }
             }
@@ -203,11 +204,23 @@ private fun SectionHeader(label: String, count: Int) {
 
 @Composable
 fun EmptyState(message: String) {
-    Box(modifier = Modifier.fillMaxSize().wrapContentSize()) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.PhotoLibrary,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(56.dp),
+        )
+        Spacer(Modifier.height(12.dp))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }

@@ -44,6 +44,7 @@ import com.tabgl.kaleido.data.Photo
 import com.tabgl.kaleido.data.hasMediaAccess
 import com.tabgl.kaleido.data.mediaPermissions
 import com.tabgl.kaleido.data.toAlbums
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 enum class Tab { Photos, Albums }
@@ -53,6 +54,9 @@ private data class ViewerRequest(val photos: List<Photo>, val index: Int)
 
 /** Column counts the grid cycles through when the user taps the density button. */
 private val gridSizes = listOf(3, 4, 5)
+
+/** How long a burst of MediaStore changes is coalesced into one reload. */
+private const val RELOAD_DEBOUNCE_MS = 300L
 
 /** Opens this app's page in system settings, where the user can grant photo access. */
 private fun appSettingsIntent(packageName: String): Intent =
@@ -77,6 +81,8 @@ fun KaleidoApp() {
     var columnIndex by rememberSaveable { mutableStateOf(0) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    var newestFirst by rememberSaveable { mutableStateOf(true) }
+    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -109,6 +115,9 @@ fun KaleidoApp() {
 
     LaunchedEffect(granted, refreshKey) {
         if (granted) {
+            // A bulk import fires many change events. Wait briefly so they collapse into one reload.
+            // Each new event restarts this effect, so only the last one in a burst actually loads.
+            if (refreshKey > 0) delay(RELOAD_DEBOUNCE_MS)
             // If the query fails, show the empty state rather than spinning forever.
             photos = try {
                 MediaRepository.loadPhotos(context)
@@ -119,20 +128,23 @@ fun KaleidoApp() {
         }
     }
 
-    val visiblePhotos = remember(photos, query) {
+    // The repository returns newest first. Reversing in memory is cheap and avoids a second query.
+    val ordered = remember(photos, newestFirst) { if (newestFirst) photos else photos.asReversed() }
+    val visiblePhotos = remember(ordered, query) {
         if (query.isBlank()) {
-            photos
+            ordered
         } else {
-            photos.filter { photo ->
+            ordered.filter { photo ->
                 photo.name.contains(query, ignoreCase = true) ||
                     photo.album.contains(query, ignoreCase = true)
             }
         }
     }
     val albums = remember(photos) { photos.toAlbums() }
-    val albumPhotos = remember(photos, openAlbum) {
-        openAlbum?.let { name -> photos.filter { it.album == name } }.orEmpty()
+    val albumPhotos = remember(ordered, openAlbum) {
+        openAlbum?.let { name -> ordered.filter { it.album == name } }.orEmpty()
     }
+    val selectedPhotos = remember(ordered, selectedIds) { ordered.filter { it.id in selectedIds } }
 
     // Hide the floating navbar while scrolling down through content; show it on scroll up.
     val navScroll = remember {
@@ -144,11 +156,23 @@ fun KaleidoApp() {
         }
     }
 
+    val selection = SelectionControls(
+        selected = selectedIds,
+        onToggle = { id ->
+            selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+        },
+        onShare = { sharePhotos(context, selectedPhotos) },
+        onClear = { selectedIds = emptySet() },
+    )
+
+    // Back closes things in order: the viewer is handled by its own dialog, then selection,
+    // then search, then an open album.
     BackHandler(enabled = openAlbum != null && viewer == null) { openAlbum = null }
     BackHandler(enabled = searchOpen && viewer == null) {
         searchOpen = false
         query = ""
     }
+    BackHandler(enabled = selectedIds.isNotEmpty() && viewer == null) { selectedIds = emptySet() }
 
     Box(modifier = Modifier.fillMaxSize().nestedScroll(navScroll)) {
         when {
@@ -190,6 +214,11 @@ fun KaleidoApp() {
                             },
                             onQueryChange = { query = it },
                         ),
+                        selection = selection,
+                        sort = SortControls(
+                            newestFirst = newestFirst,
+                            onToggle = { newestFirst = !newestFirst },
+                        ),
                     )
 
                     album == null -> AlbumsScreen(
@@ -204,6 +233,7 @@ fun KaleidoApp() {
                         onCycleColumns = { columnIndex = (columnIndex + 1) % gridSizes.size },
                         onOpen = { index -> viewer = ViewerRequest(albumPhotos, index) },
                         onBack = { openAlbum = null },
+                        selection = selection,
                     )
                 }
             }
@@ -226,6 +256,7 @@ fun KaleidoApp() {
                         openAlbum = null
                         searchOpen = false
                         query = ""
+                        selectedIds = emptySet()
                         navVisible = true
                     },
                 )

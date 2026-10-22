@@ -1,5 +1,6 @@
 package com.tabgl.kaleido.ui
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
@@ -69,13 +70,28 @@ private val dateFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Loc
 private fun formatDate(epochSeconds: Long): String =
     Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(dateFormatter)
 
-/** Hands the photo to the system share sheet. The URI grant lets the receiving app read it. */
-private fun sharePhoto(context: Context, photo: Photo) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "image/*"
-        putExtra(Intent.EXTRA_STREAM, photo.uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+/**
+ * Hands one or more photos to the system share sheet. The read grant is attached through
+ * ClipData, so the receiving app can read every photo, not just the first.
+ */
+fun sharePhotos(context: Context, photos: List<Photo>) {
+    if (photos.isEmpty()) return
+    val uris = ArrayList(photos.map { it.uri })
+    val send = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "image/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        }
     }
+    send.clipData = ClipData.newUri(context.contentResolver, "Photos", uris.first()).also { clip ->
+        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+    }
+    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(send, null))
 }
 
@@ -206,7 +222,7 @@ fun PhotoViewer(
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
                         )
-                        IconButton(onClick = { sharePhoto(context, current) }) {
+                        IconButton(onClick = { sharePhotos(context, listOf(current)) }) {
                             Icon(
                                 imageVector = Icons.Rounded.Share,
                                 contentDescription = "Share",

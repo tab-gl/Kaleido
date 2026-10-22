@@ -13,15 +13,12 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,11 +30,15 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,9 +47,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -62,6 +65,20 @@ data class SearchControls(
     val query: String,
     val onToggle: () -> Unit,
     val onQueryChange: (String) -> Unit,
+)
+
+/** Multi-select state for a gallery: the picked photo ids and the actions for them. */
+data class SelectionControls(
+    val selected: Set<Long>,
+    val onToggle: (Long) -> Unit,
+    val onShare: () -> Unit,
+    val onClear: () -> Unit,
+)
+
+/** Sort direction for a gallery, and the action that flips it. */
+data class SortControls(
+    val newestFirst: Boolean,
+    val onToggle: () -> Unit,
 )
 
 @Composable
@@ -153,7 +170,8 @@ fun LoadingState() {
 
 /**
  * Photos grouped by day, in a grid. [onOpen] receives the tapped photo's index in [photos].
- * [search] adds a search field and button; [columns] and [onCycleColumns] control grid density.
+ * [search] adds a search field; [columns] and [onCycleColumns] control grid density.
+ * [selection] turns long-press into multi-select; [sort] adds a newest/oldest toggle.
  */
 @Composable
 fun GalleryScreen(
@@ -164,33 +182,67 @@ fun GalleryScreen(
     onOpen: (Int) -> Unit,
     onBack: (() -> Unit)? = null,
     search: SearchControls? = null,
+    selection: SelectionControls? = null,
+    sort: SortControls? = null,
 ) {
     val sections = remember(photos) { photos.toSections() }
     // Index lookup per tap, instead of scanning the whole list for every tile.
     val indexById = remember(photos) { photos.withIndex().associate { (index, photo) -> photo.id to index } }
     val queryText = search?.query.orEmpty()
+    // Selection mode is on while at least one photo is picked.
+    val active = selection?.takeIf { it.selected.isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
-            title = title,
-            subtitle = itemCountLabel(photos.size),
-            onBack = onBack,
+            title = if (active != null) "${active.selected.size} selected" else title,
+            subtitle = if (active != null) "Tap photos to add or remove" else itemCountLabel(photos.size),
+            onBack = if (active != null) null else onBack,
             actions = {
-                if (search != null) {
-                    IconButton(onClick = search.onToggle) {
+                if (active != null) {
+                    IconButton(onClick = active.onShare) {
                         Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = if (search.open) "Close search" else "Search",
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = "Share selected",
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
-                }
-                IconButton(onClick = onCycleColumns) {
-                    Icon(
-                        imageVector = Icons.Rounded.Apps,
-                        contentDescription = "Grid size: $columns columns. Tap to change.",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                    )
+                    IconButton(onClick = active.onClear) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Clear selection",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                } else {
+                    if (search != null) {
+                        IconButton(onClick = search.onToggle) {
+                            Icon(
+                                imageVector = Icons.Rounded.Search,
+                                contentDescription = if (search.open) "Close search" else "Search",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                    }
+                    if (sort != null) {
+                        IconButton(onClick = sort.onToggle) {
+                            Icon(
+                                imageVector = Icons.Rounded.SwapVert,
+                                contentDescription = if (sort.newestFirst) {
+                                    "Newest first. Tap for oldest first."
+                                } else {
+                                    "Oldest first. Tap for newest first."
+                                },
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                    }
+                    IconButton(onClick = onCycleColumns) {
+                        Icon(
+                            imageVector = Icons.Rounded.Apps,
+                            contentDescription = "Grid size: $columns columns. Tap to change.",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
                 }
             },
         )
@@ -233,7 +285,18 @@ fun GalleryScreen(
                         SectionHeader(label = section.label, count = section.photos.size)
                     }
                     items(section.photos, key = { it.id }) { photo ->
-                        PhotoTile(photo = photo, onClick = { onOpen(indexById.getValue(photo.id)) })
+                        PhotoTile(
+                            photo = photo,
+                            selected = active != null && photo.id in active.selected,
+                            onClick = {
+                                if (selection != null && active != null) {
+                                    selection.onToggle(photo.id)
+                                } else {
+                                    onOpen(indexById.getValue(photo.id))
+                                }
+                            },
+                            onLongClick = { selection?.onToggle?.invoke(photo.id) },
+                        )
                     }
                 }
             }

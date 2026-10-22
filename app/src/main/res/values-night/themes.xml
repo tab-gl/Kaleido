@@ -1,7 +1,0 @@
-<resources>
-    <style name="Theme.Kaleido" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/night_brown</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-    </style>
-</resources>

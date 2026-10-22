@@ -71,7 +71,7 @@ fun SettingsScreen(settings: AppSettings) {
                     ThemeMode.DARK -> "Dark"
                 },
                 selected = settings.themeMode == mode,
-                onClick = { settings.setThemeMode(mode) },
+                onClick = { settings.saveThemeMode(mode) },
             )
         }
         SwitchRow(
@@ -79,7 +79,7 @@ fun SettingsScreen(settings: AppSettings) {
             subtitle = if (monetSupported) "Match colours to your wallpaper" else "Needs Android 12 or newer",
             checked = monetSupported && settings.dynamicColor,
             enabled = monetSupported,
-            onChange = { settings.setDynamicColor(it) },
+            onChange = { settings.saveDynamicColor(it) },
         )
 
         SectionTitle("Photos")
@@ -87,14 +87,14 @@ fun SettingsScreen(settings: AppSettings) {
             OptionRow(
                 label = "$count per row",
                 selected = settings.columns == count,
-                onClick = { settings.setColumns(count) },
+                onClick = { settings.saveColumns(count) },
             )
         }
         SortOrder.entries.forEach { order ->
             OptionRow(
                 label = sortLabel(order),
                 selected = settings.sortOrder == order,
-                onClick = { settings.setSortOrder(order) },
+                onClick = { settings.saveSortOrder(order) },
             )
         }
 

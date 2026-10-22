@@ -104,7 +104,7 @@ fun KaleidoApp(settings: AppSettings) {
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            settings.setStarred(settings.starred - pendingDelete)
+            settings.saveStarred(settings.starred - pendingDelete)
             selectedIds = selectedIds - pendingDelete
         }
         pendingDelete = emptySet()
@@ -176,13 +176,13 @@ fun KaleidoApp(settings: AppSettings) {
 
     fun toggleStar(photo: Photo) {
         val current = settings.starred
-        settings.setStarred(if (photo.id in current) current - photo.id else current + photo.id)
+        settings.saveStarred(if (photo.id in current) current - photo.id else current + photo.id)
     }
 
     fun starSelected() {
         val ids = selectedPhotos.mapTo(HashSet()) { it.id }
         val current = settings.starred
-        settings.setStarred(if (allSelectedStarred) current - ids else current + ids)
+        settings.saveStarred(if (allSelectedStarred) current - ids else current + ids)
     }
 
     fun requestDelete(targets: List<Photo>) {
@@ -197,7 +197,7 @@ fun KaleidoApp(settings: AppSettings) {
             val gone = targets
                 .filter { photo -> runCatching { resolver.delete(photo.uri, null, null) > 0 }.getOrDefault(false) }
                 .mapTo(HashSet()) { it.id }
-            settings.setStarred(settings.starred - gone)
+            settings.saveStarred(settings.starred - gone)
             selectedIds = selectedIds - gone
             Toast.makeText(context, "Deleted ${gone.size} of ${targets.size}", Toast.LENGTH_SHORT).show()
         }
@@ -253,7 +253,7 @@ fun KaleidoApp(settings: AppSettings) {
                         title = "Photos",
                         photos = visiblePhotos,
                         columns = settings.columns,
-                        onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
+                        onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
                         onOpen = { index -> viewer = ViewerRequest(visiblePhotos, index) },
                         search = SearchControls(
                             open = searchOpen,
@@ -265,7 +265,7 @@ fun KaleidoApp(settings: AppSettings) {
                             onQueryChange = { query = it },
                         ),
                         selection = selection,
-                        sort = SortControls(order = settings.sortOrder, onSelect = { settings.setSortOrder(it) }),
+                        sort = SortControls(order = settings.sortOrder, onSelect = { settings.saveSortOrder(it) }),
                         starred = settings.starred,
                     )
 
@@ -273,7 +273,7 @@ fun KaleidoApp(settings: AppSettings) {
                         title = "Starred",
                         photos = starredPhotos,
                         columns = settings.columns,
-                        onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
+                        onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
                         onOpen = { index -> viewer = ViewerRequest(starredPhotos, index) },
                         selection = selection,
                         starred = settings.starred,
@@ -291,7 +291,7 @@ fun KaleidoApp(settings: AppSettings) {
                             title = album,
                             photos = albumPhotos,
                             columns = settings.columns,
-                            onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
+                            onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
                             onOpen = { index -> viewer = ViewerRequest(albumPhotos, index) },
                             onBack = { openAlbum = null },
                             selection = selection,

@@ -29,27 +29,27 @@ class AppSettings(private val prefs: SharedPreferences) {
     var starred by mutableStateOf(readStarred())
         private set
 
-    fun setThemeMode(mode: ThemeMode) {
+    fun saveThemeMode(mode: ThemeMode) {
         themeMode = mode
         prefs.edit().putString(KEY_THEME, mode.name).apply()
     }
 
-    fun setDynamicColor(on: Boolean) {
+    fun saveDynamicColor(on: Boolean) {
         dynamicColor = on
         prefs.edit().putBoolean(KEY_DYNAMIC, on).apply()
     }
 
-    fun setColumns(count: Int) {
+    fun saveColumns(count: Int) {
         columns = count.coerceIn(3, 5)
         prefs.edit().putInt(KEY_COLUMNS, columns).apply()
     }
 
-    fun setSortOrder(order: SortOrder) {
+    fun saveSortOrder(order: SortOrder) {
         sortOrder = order
         prefs.edit().putString(KEY_SORT, order.name).apply()
     }
 
-    fun setStarred(ids: Set<Long>) {
+    fun saveStarred(ids: Set<Long>) {
         starred = ids
         prefs.edit().putStringSet(KEY_STARRED, ids.mapTo(HashSet()) { it.toString() }).apply()
     }

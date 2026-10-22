@@ -1,10 +1,16 @@
 package com.tabgl.kaleido.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,12 +25,16 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -37,8 +47,20 @@ import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
 import com.tabgl.kaleido.data.toSections
 
+/** State and actions for the Photos search field. Null on screens without search. */
+data class SearchControls(
+    val open: Boolean,
+    val query: String,
+    val onToggle: () -> Unit,
+    val onQueryChange: (String) -> Unit,
+)
+
 @Composable
-fun PermissionPrompt(onRequest: () -> Unit) {
+fun PermissionPrompt(
+    showSettings: Boolean,
+    onRequest: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -71,6 +93,19 @@ fun PermissionPrompt(onRequest: () -> Unit) {
         )
         Spacer(Modifier.height(24.dp))
         Button(onClick = onRequest) { Text("Allow access") }
+        if (showSettings) {
+            // Shown after a request that didn't grant access. Once it has been denied twice,
+            // the system stops showing the dialog, so the only way forward is app settings.
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "Access is still off. You can turn it on in app settings.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onOpenSettings) { Text("Open settings") }
+        }
     }
 }
 
@@ -81,25 +116,75 @@ fun LoadingState() {
     }
 }
 
-/** Photos grouped by day, in a grid. [onOpen] receives the tapped photo's index in [photos]. */
+/**
+ * Photos grouped by day, in a grid. [onOpen] receives the tapped photo's index in [photos].
+ * [search] adds a search field and button; [columns] and [onCycleColumns] control grid density.
+ */
 @Composable
 fun GalleryScreen(
     title: String,
     photos: List<Photo>,
+    columns: Int,
+    onCycleColumns: () -> Unit,
     onOpen: (Int) -> Unit,
     onBack: (() -> Unit)? = null,
+    search: SearchControls? = null,
 ) {
     val sections = remember(photos) { photos.toSections() }
     // Index lookup per tap, instead of scanning the whole list for every tile.
     val indexById = remember(photos) { photos.withIndex().associate { (index, photo) -> photo.id to index } }
+    val queryText = search?.query.orEmpty()
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        ScreenHeader(title = title, subtitle = itemCountLabel(photos.size), onBack = onBack)
+        ScreenHeader(
+            title = title,
+            subtitle = itemCountLabel(photos.size),
+            onBack = onBack,
+            actions = {
+                if (search != null) {
+                    IconButton(onClick = search.onToggle) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = if (search.open) "Close search" else "Search",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                }
+                IconButton(onClick = onCycleColumns) {
+                    Icon(
+                        imageVector = Icons.Rounded.Apps,
+                        contentDescription = "Grid size: $columns columns. Tap to change.",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+            },
+        )
+
+        if (search != null) {
+            AnimatedVisibility(
+                visible = search.open,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                OutlinedTextField(
+                    value = search.query,
+                    onValueChange = search.onQueryChange,
+                    singleLine = true,
+                    placeholder = { Text("Search by name or album") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                )
+            }
+        }
+
         if (photos.isEmpty()) {
-            EmptyState("No photos here yet")
+            EmptyState(
+                if (queryText.isNotBlank()) "No photos match \"$queryText\"" else "No photos here yet",
+            )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 108.dp),
+                columns = GridCells.Fixed(columns),
                 contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -144,7 +229,12 @@ fun AlbumsScreen(albums: List<Album>, onOpen: (Album) -> Unit) {
 }
 
 @Composable
-fun ScreenHeader(title: String, subtitle: String, onBack: (() -> Unit)? = null) {
+fun ScreenHeader(
+    title: String,
+    subtitle: String,
+    onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -161,7 +251,7 @@ fun ScreenHeader(title: String, subtitle: String, onBack: (() -> Unit)? = null) 
             }
             Spacer(Modifier.width(4.dp))
         }
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
@@ -175,6 +265,7 @@ fun ScreenHeader(title: String, subtitle: String, onBack: (() -> Unit)? = null) 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        actions()
     }
 }
 

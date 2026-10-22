@@ -34,12 +34,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +54,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,9 +65,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
+import com.tabgl.kaleido.data.PhotoSection
+import com.tabgl.kaleido.data.SortOrder
 import com.tabgl.kaleido.data.toSections
 
-/** State and actions for the Photos search field. Null on screens without search. */
+/** State and actions for the search field. Null on screens without search. */
 data class SearchControls(
     val open: Boolean,
     val query: String,
@@ -67,19 +77,28 @@ data class SearchControls(
     val onQueryChange: (String) -> Unit,
 )
 
-/** Multi-select state for a gallery: the picked photo ids and the actions for them. */
+/** Multi-select state: picked photo ids and the bulk actions for them. */
 data class SelectionControls(
     val selected: Set<Long>,
+    val allStarred: Boolean,
     val onToggle: (Long) -> Unit,
+    val onStar: () -> Unit,
     val onShare: () -> Unit,
+    val onDelete: () -> Unit,
     val onClear: () -> Unit,
 )
 
-/** Sort direction for a gallery, and the action that flips it. */
+/** Sort order for a gallery, and the action that picks a new one. */
 data class SortControls(
-    val newestFirst: Boolean,
-    val onToggle: () -> Unit,
+    val order: SortOrder,
+    val onSelect: (SortOrder) -> Unit,
 )
+
+fun sortLabel(order: SortOrder): String = when (order) {
+    SortOrder.NEWEST -> "Newest first"
+    SortOrder.OLDEST -> "Oldest first"
+    SortOrder.NAME -> "Name A to Z"
+}
 
 @Composable
 fun PermissionPrompt(
@@ -169,9 +188,8 @@ fun LoadingState() {
 }
 
 /**
- * Photos grouped by day, in a grid. [onOpen] receives the tapped photo's index in [photos].
- * [search] adds a search field; [columns] and [onCycleColumns] control grid density.
- * [selection] turns long-press into multi-select; [sort] adds a newest/oldest toggle.
+ * Photos in a connected grid. Sections are grouped by day, or shown as one list when sorted by name.
+ * [onOpen] receives the tapped photo's index in [photos]. Long-press starts multi-select.
  */
 @Composable
 fun GalleryScreen(
@@ -184,13 +202,18 @@ fun GalleryScreen(
     search: SearchControls? = null,
     selection: SelectionControls? = null,
     sort: SortControls? = null,
+    starred: Set<Long> = emptySet(),
 ) {
-    val sections = remember(photos) { photos.toSections() }
+    val byName = sort?.order == SortOrder.NAME
+    val sections = remember(photos, byName) {
+        if (byName) listOf(PhotoSection(label = "All photos", photos = photos)) else photos.toSections()
+    }
     // Index lookup per tap, instead of scanning the whole list for every tile.
     val indexById = remember(photos) { photos.withIndex().associate { (index, photo) -> photo.id to index } }
     val queryText = search?.query.orEmpty()
     // Selection mode is on while at least one photo is picked.
     val active = selection?.takeIf { it.selected.isNotEmpty() }
+    val tint = MaterialTheme.colorScheme.onBackground
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
@@ -199,19 +222,21 @@ fun GalleryScreen(
             onBack = if (active != null) null else onBack,
             actions = {
                 if (active != null) {
-                    IconButton(onClick = active.onShare) {
+                    IconButton(onClick = active.onStar) {
                         Icon(
-                            imageVector = Icons.Rounded.Share,
-                            contentDescription = "Share selected",
-                            tint = MaterialTheme.colorScheme.onBackground,
+                            imageVector = if (active.allStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                            contentDescription = if (active.allStarred) "Unstar selected" else "Star selected",
+                            tint = tint,
                         )
                     }
+                    IconButton(onClick = active.onShare) {
+                        Icon(imageVector = Icons.Rounded.Share, contentDescription = "Share selected", tint = tint)
+                    }
+                    IconButton(onClick = active.onDelete) {
+                        Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete selected", tint = tint)
+                    }
                     IconButton(onClick = active.onClear) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Clear selection",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                        )
+                        Icon(imageVector = Icons.Rounded.Close, contentDescription = "Clear selection", tint = tint)
                     }
                 } else {
                     if (search != null) {
@@ -219,28 +244,16 @@ fun GalleryScreen(
                             Icon(
                                 imageVector = Icons.Rounded.Search,
                                 contentDescription = if (search.open) "Close search" else "Search",
-                                tint = MaterialTheme.colorScheme.onBackground,
+                                tint = tint,
                             )
                         }
                     }
-                    if (sort != null) {
-                        IconButton(onClick = sort.onToggle) {
-                            Icon(
-                                imageVector = Icons.Rounded.SwapVert,
-                                contentDescription = if (sort.newestFirst) {
-                                    "Newest first. Tap for oldest first."
-                                } else {
-                                    "Oldest first. Tap for newest first."
-                                },
-                                tint = MaterialTheme.colorScheme.onBackground,
-                            )
-                        }
-                    }
+                    if (sort != null) SortMenu(sort)
                     IconButton(onClick = onCycleColumns) {
                         Icon(
                             imageVector = Icons.Rounded.Apps,
-                            contentDescription = "Grid size: $columns columns. Tap to change.",
-                            tint = MaterialTheme.colorScheme.onBackground,
+                            contentDescription = "Grid size: $columns per row. Tap to change.",
+                            tint = tint,
                         )
                     }
                 }
@@ -272,22 +285,26 @@ fun GalleryScreen(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
-                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 120.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                // Zero spacing: tiles touch, so the grid reads as one connected surface.
+                contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 sections.forEach { section ->
-                    item(
-                        key = "header-${section.label}",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) {
-                        SectionHeader(label = section.label, count = section.photos.size)
+                    if (!byName) {
+                        item(
+                            key = "header-${section.label}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            SectionHeader(label = section.label, count = section.photos.size)
+                        }
                     }
                     items(section.photos, key = { it.id }) { photo ->
                         PhotoTile(
                             photo = photo,
                             selected = active != null && photo.id in active.selected,
+                            starred = photo.id in starred,
                             onClick = {
                                 if (selection != null && active != null) {
                                     selection.onToggle(photo.id)
@@ -296,9 +313,38 @@ fun GalleryScreen(
                                 }
                             },
                             onLongClick = { selection?.onToggle?.invoke(photo.id) },
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SortMenu(sort: SortControls) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(
+                imageVector = Icons.Rounded.SwapVert,
+                contentDescription = "Sort: ${sortLabel(sort.order)}",
+                tint = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            SortOrder.entries.forEach { order ->
+                DropdownMenuItem(
+                    text = { Text(sortLabel(order)) },
+                    onClick = {
+                        sort.onSelect(order)
+                        open = false
+                    },
+                    leadingIcon = {
+                        if (order == sort.order) Icon(imageVector = Icons.Rounded.Check, contentDescription = null)
+                    },
+                )
             }
         }
     }
@@ -372,7 +418,7 @@ private fun SectionHeader(label: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 4.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

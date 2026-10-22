@@ -1,14 +1,18 @@
 package com.tabgl.kaleido.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
@@ -39,21 +43,20 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tabgl.kaleido.data.AppSettings
 import com.tabgl.kaleido.data.MediaRepository
 import com.tabgl.kaleido.data.Photo
+import com.tabgl.kaleido.data.arrangedBy
 import com.tabgl.kaleido.data.hasMediaAccess
 import com.tabgl.kaleido.data.mediaPermissions
 import com.tabgl.kaleido.data.toAlbums
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-enum class Tab { Photos, Albums }
+enum class Tab { Photos, Albums, Starred, Settings }
 
 /** The photos the viewer can swipe through, and the one that was tapped. */
 private data class ViewerRequest(val photos: List<Photo>, val index: Int)
-
-/** Column counts the grid cycles through when the user taps the density button. */
-private val gridSizes = listOf(3, 4, 5)
 
 /** How long a burst of MediaStore changes is coalesced into one reload. */
 private const val RELOAD_DEBOUNCE_MS = 300L
@@ -66,8 +69,11 @@ private fun appSettingsIntent(packageName: String): Intent =
 private fun screenRank(state: Pair<Tab, String?>): Int =
     if (state.second != null) 2 else state.first.ordinal
 
+/** Grid density cycles 3 → 4 → 5 → 3. */
+private fun nextColumns(current: Int): Int = if (current >= 5) 3 else current + 1
+
 @Composable
-fun KaleidoApp() {
+fun KaleidoApp(settings: AppSettings) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(context.hasMediaAccess()) }
     var requested by rememberSaveable { mutableStateOf(false) }
@@ -77,12 +83,12 @@ fun KaleidoApp() {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos) }
     var openAlbum by rememberSaveable { mutableStateOf<String?>(null) }
     var viewer by remember { mutableStateOf<ViewerRequest?>(null) }
+    var editing by remember { mutableStateOf<Photo?>(null) }
     var navVisible by remember { mutableStateOf(true) }
-    var columnIndex by rememberSaveable { mutableStateOf(0) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var newestFirst by rememberSaveable { mutableStateOf(true) }
     var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
+    var pendingDelete by remember { mutableStateOf(emptySet<Long>()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -91,6 +97,17 @@ fun KaleidoApp() {
         // access is reported differently on Android 14+.
         requested = true
         granted = context.hasMediaAccess()
+    }
+
+    // Android 11+ asks the user to confirm deletes through the system dialog.
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            settings.setStarred(settings.starred - pendingDelete)
+            selectedIds = selectedIds - pendingDelete
+        }
+        pendingDelete = emptySet()
     }
 
     LaunchedEffect(Unit) {
@@ -128,8 +145,7 @@ fun KaleidoApp() {
         }
     }
 
-    // The repository returns newest first. Reversing in memory is cheap and avoids a second query.
-    val ordered = remember(photos, newestFirst) { if (newestFirst) photos else photos.asReversed() }
+    val ordered = remember(photos, settings.sortOrder) { photos.arrangedBy(settings.sortOrder) }
     val visiblePhotos = remember(ordered, query) {
         if (query.isBlank()) {
             ordered
@@ -140,11 +156,13 @@ fun KaleidoApp() {
             }
         }
     }
+    val starredPhotos = remember(ordered, settings.starred) { ordered.filter { it.id in settings.starred } }
     val albums = remember(photos) { photos.toAlbums() }
     val albumPhotos = remember(ordered, openAlbum) {
         openAlbum?.let { name -> ordered.filter { it.album == name } }.orEmpty()
     }
     val selectedPhotos = remember(ordered, selectedIds) { ordered.filter { it.id in selectedIds } }
+    val allSelectedStarred = selectedPhotos.isNotEmpty() && selectedPhotos.all { it.id in settings.starred }
 
     // Hide the floating navbar while scrolling down through content; show it on scroll up.
     val navScroll = remember {
@@ -156,23 +174,55 @@ fun KaleidoApp() {
         }
     }
 
+    fun toggleStar(photo: Photo) {
+        val current = settings.starred
+        settings.setStarred(if (photo.id in current) current - photo.id else current + photo.id)
+    }
+
+    fun starSelected() {
+        val ids = selectedPhotos.mapTo(HashSet()) { it.id }
+        val current = settings.starred
+        settings.setStarred(if (allSelectedStarred) current - ids else current + ids)
+    }
+
+    fun requestDelete(targets: List<Photo>) {
+        if (targets.isEmpty()) return
+        val resolver = context.contentResolver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            pendingDelete = targets.mapTo(HashSet()) { it.id }
+            val request = MediaStore.createDeleteRequest(resolver, targets.map { it.uri })
+            deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+        } else {
+            // Before Android 11 an app can delete only the photos it can write. Any others are skipped.
+            val gone = targets
+                .filter { photo -> runCatching { resolver.delete(photo.uri, null, null) > 0 }.getOrDefault(false) }
+                .mapTo(HashSet()) { it.id }
+            settings.setStarred(settings.starred - gone)
+            selectedIds = selectedIds - gone
+            Toast.makeText(context, "Deleted ${gone.size} of ${targets.size}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val selection = SelectionControls(
         selected = selectedIds,
-        onToggle = { id ->
-            selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-        },
+        allStarred = allSelectedStarred,
+        onToggle = { id -> selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id },
+        onStar = { starSelected() },
         onShare = { sharePhotos(context, selectedPhotos) },
+        onDelete = { requestDelete(selectedPhotos) },
         onClear = { selectedIds = emptySet() },
     )
 
-    // Back closes things in order: the viewer is handled by its own dialog, then selection,
+    // Back closes things in order: the viewer and editor are their own dialogs, then selection,
     // then search, then an open album.
-    BackHandler(enabled = openAlbum != null && viewer == null) { openAlbum = null }
-    BackHandler(enabled = searchOpen && viewer == null) {
+    BackHandler(enabled = openAlbum != null && viewer == null && editing == null) { openAlbum = null }
+    BackHandler(enabled = searchOpen && viewer == null && editing == null) {
         searchOpen = false
         query = ""
     }
-    BackHandler(enabled = selectedIds.isNotEmpty() && viewer == null) { selectedIds = emptySet() }
+    BackHandler(enabled = selectedIds.isNotEmpty() && viewer == null && editing == null) {
+        selectedIds = emptySet()
+    }
 
     Box(modifier = Modifier.fillMaxSize().nestedScroll(navScroll)) {
         when {
@@ -198,12 +248,12 @@ fun KaleidoApp() {
                 },
                 label = "screen",
             ) { (currentTab, album) ->
-                when {
-                    currentTab == Tab.Photos -> GalleryScreen(
+                when (currentTab) {
+                    Tab.Photos -> GalleryScreen(
                         title = "Photos",
                         photos = visiblePhotos,
-                        columns = gridSizes[columnIndex],
-                        onCycleColumns = { columnIndex = (columnIndex + 1) % gridSizes.size },
+                        columns = settings.columns,
+                        onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
                         onOpen = { index -> viewer = ViewerRequest(visiblePhotos, index) },
                         search = SearchControls(
                             open = searchOpen,
@@ -215,26 +265,39 @@ fun KaleidoApp() {
                             onQueryChange = { query = it },
                         ),
                         selection = selection,
-                        sort = SortControls(
-                            newestFirst = newestFirst,
-                            onToggle = { newestFirst = !newestFirst },
-                        ),
+                        sort = SortControls(order = settings.sortOrder, onSelect = { settings.setSortOrder(it) }),
+                        starred = settings.starred,
                     )
 
-                    album == null -> AlbumsScreen(
-                        albums = albums,
-                        onOpen = { openAlbum = it.name },
-                    )
-
-                    else -> GalleryScreen(
-                        title = album,
-                        photos = albumPhotos,
-                        columns = gridSizes[columnIndex],
-                        onCycleColumns = { columnIndex = (columnIndex + 1) % gridSizes.size },
-                        onOpen = { index -> viewer = ViewerRequest(albumPhotos, index) },
-                        onBack = { openAlbum = null },
+                    Tab.Starred -> GalleryScreen(
+                        title = "Starred",
+                        photos = starredPhotos,
+                        columns = settings.columns,
+                        onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
+                        onOpen = { index -> viewer = ViewerRequest(starredPhotos, index) },
                         selection = selection,
+                        starred = settings.starred,
                     )
+
+                    Tab.Settings -> SettingsScreen(settings = settings)
+
+                    Tab.Albums -> if (album == null) {
+                        AlbumsScreen(
+                            albums = albums,
+                            onOpen = { openAlbum = it.name },
+                        )
+                    } else {
+                        GalleryScreen(
+                            title = album,
+                            photos = albumPhotos,
+                            columns = settings.columns,
+                            onCycleColumns = { settings.setColumns(nextColumns(settings.columns)) },
+                            onOpen = { index -> viewer = ViewerRequest(albumPhotos, index) },
+                            onBack = { openAlbum = null },
+                            selection = selection,
+                            starred = settings.starred,
+                        )
+                    }
                 }
             }
         }
@@ -267,7 +330,23 @@ fun KaleidoApp() {
             PhotoViewer(
                 photos = request.photos,
                 startIndex = request.index,
+                starred = settings.starred,
                 onDismiss = { viewer = null },
+                onToggleStar = { toggleStar(it) },
+                onEdit = { editing = it },
+                onDelete = {
+                    viewer = null
+                    requestDelete(listOf(it))
+                },
+            )
+        }
+
+        // Stacked after the viewer so it draws on top of it.
+        editing?.let { photo ->
+            EditorDialog(
+                photo = photo,
+                onDismiss = { editing = null },
+                onSaved = { editing = null },
             )
         }
     }

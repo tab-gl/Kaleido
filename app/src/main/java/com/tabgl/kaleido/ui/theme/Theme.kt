@@ -1,7 +1,16 @@
 package com.tabgl.kaleido.ui.theme
 
+import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import com.tabgl.kaleido.data.ThemeMode
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -61,11 +70,39 @@ private val MilkOrangeDark = darkColorScheme(
 
 @Composable
 fun KaleidoTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val dark = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    val context = LocalContext.current
+    val scheme = when {
+        // Monet: colours taken from the wallpaper. Needs Android 12 or newer.
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        dark -> MilkOrangeDark
+        else -> MilkOrangeLight
+    }
+
+    // Keep status and navigation bar icons readable for the theme that is actually shown.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            (view.context as? Activity)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+        }
+    }
+
     MaterialTheme(
-        colorScheme = if (darkTheme) MilkOrangeDark else MilkOrangeLight,
+        colorScheme = scheme,
         typography = Typography(),
         content = content,
     )

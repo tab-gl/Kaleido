@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -62,16 +64,19 @@ private fun rememberThumbnailRequest(uri: Uri): ImageRequest {
 }
 
 /**
- * A square thumbnail. It squishes when pressed. Long-press fires [onLongClick] with a haptic tick.
- * When [selected], the photo shrinks inside its frame and gets a tinted overlay and a check badge.
+ * A square thumbnail. Tiles sit edge to edge, so the grid reads as one connected mosaic.
+ * It squishes when pressed and fires [onLongClick] with a haptic tick.
+ * When [selected], the photo insets, gets a tint and a check badge. A starred photo shows a star.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PhotoTile(
     photo: Photo,
     selected: Boolean,
+    starred: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -88,10 +93,9 @@ fun PhotoTile(
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
                 interactionSource = interaction,
@@ -110,7 +114,7 @@ fun PhotoTile(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inset)
-                .clip(RoundedCornerShape(if (selected) 14.dp else 18.dp)),
+                .clip(RoundedCornerShape(if (selected) 14.dp else 0.dp)),
         )
         if (selected) {
             Box(
@@ -134,6 +138,23 @@ fun PhotoTile(
                     modifier = Modifier.size(16.dp),
                 )
             }
+        } else if (starred) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Star,
+                    contentDescription = "Starred",
+                    tint = Color(0xFFFFC857),
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }
@@ -154,7 +175,6 @@ fun AlbumTile(album: Album, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(28.dp))
             .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -68,6 +70,18 @@ fun FloatingNavBar(
                 selected = selected == Tab.Albums,
                 onClick = { onSelect(Tab.Albums) },
             )
+            NavItem(
+                label = "Starred",
+                icon = Icons.Rounded.Star,
+                selected = selected == Tab.Starred,
+                onClick = { onSelect(Tab.Starred) },
+            )
+            NavItem(
+                label = "Settings",
+                icon = Icons.Rounded.Settings,
+                selected = selected == Tab.Settings,
+                onClick = { onSelect(Tab.Settings) },
+            )
         }
     }
 }
@@ -99,7 +113,7 @@ private fun NavItem(
             .clip(CircleShape)
             .background(container)
             .selectable(selected = selected, onClick = onClick, role = Role.Tab)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

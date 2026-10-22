@@ -38,8 +38,8 @@ android {
         applicationId = "com.tabgl.kaleido"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     // Produce one APK per supported ABI (splits and abiFilters must not be combined).
@@ -99,5 +99,6 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.exifinterface)
     debugImplementation(libs.androidx.ui.tooling)
 }

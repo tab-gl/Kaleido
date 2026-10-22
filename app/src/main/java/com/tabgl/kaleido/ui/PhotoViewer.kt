@@ -29,6 +29,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -108,7 +112,11 @@ fun sharePhotos(context: Context, photos: List<Photo>) {
 fun PhotoViewer(
     photos: List<Photo>,
     startIndex: Int,
+    starred: Set<Long>,
     onDismiss: () -> Unit,
+    onToggleStar: (Photo) -> Unit,
+    onEdit: (Photo) -> Unit,
+    onDelete: (Photo) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -244,6 +252,25 @@ fun PhotoViewer(
                             .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        ) {
+                            val isStarred = current.id in starred
+                            IconButton(onClick = { onToggleStar(current) }) {
+                                Icon(
+                                    imageVector = if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                                    contentDescription = if (isStarred) "Unstar" else "Star",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { onEdit(current) }) {
+                                Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = Color.White)
+                            }
+                            IconButton(onClick = { onDelete(current) }) {
+                                Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete", tint = Color.White)
+                            }
+                        }
                         Text(
                             text = current.name,
                             style = MaterialTheme.typography.titleSmall,

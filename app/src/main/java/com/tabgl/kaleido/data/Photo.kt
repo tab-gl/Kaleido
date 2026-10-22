@@ -27,6 +27,13 @@ data class PhotoSection(
     val photos: List<Photo>,
 )
 
+/** Orders photos for display. The repository returns them newest first. */
+fun List<Photo>.arrangedBy(order: SortOrder): List<Photo> = when (order) {
+    SortOrder.NEWEST -> this
+    SortOrder.OLDEST -> reversed()
+    SortOrder.NAME -> sortedBy { it.name.lowercase() }
+}
+
 /** Groups photos by their MediaStore bucket. The cover is the newest photo in each album. */
 fun List<Photo>.toAlbums(): List<Album> =
     groupBy { it.album }

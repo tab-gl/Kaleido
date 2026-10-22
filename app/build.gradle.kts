@@ -4,32 +4,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release signing. The keystore is never committed. Provide it through environment variables:
-//   KALEIDO_KEYSTORE_PATH   path to the .jks/.keystore file
-//   KALEIDO_STORE_PASSWORD  keystore password
-//   KALEIDO_KEY_ALIAS       key alias inside the keystore
-//   KALEIDO_KEY_PASSWORD    key password
-// Local builds without a keystore fall back to the debug key. CI requires the real key
-// (KALEIDO_REQUIRE_RELEASE_KEY=true) so it never ships an APK signed with the debug key.
-val releaseKeystorePath: String? = System.getenv("KALEIDO_KEYSTORE_PATH")
-val releaseStorePassword: String? = System.getenv("KALEIDO_STORE_PASSWORD")
-val releaseKeyAlias: String? = System.getenv("KALEIDO_KEY_ALIAS")
-val releaseKeyPassword: String? = System.getenv("KALEIDO_KEY_PASSWORD")
-// All four values or none: a partial setup falls back to debug, never to a broken release config.
-val hasReleaseKey: Boolean = releaseKeystorePath != null &&
-    releaseStorePassword != null &&
-    releaseKeyAlias != null &&
-    releaseKeyPassword != null &&
-    file(releaseKeystorePath).let { it.isFile && it.length() > 0L }
-val requireReleaseKey: Boolean = System.getenv("KALEIDO_REQUIRE_RELEASE_KEY") == "true"
-
-if (requireReleaseKey && !hasReleaseKey) {
-    throw GradleException(
-        "Release keystore missing. Set the ANDROID_KEYSTORE_BASE64 secret and the " +
-            "KALEIDO_STORE_PASSWORD, KALEIDO_KEY_ALIAS and KALEIDO_KEY_PASSWORD secrets."
-    )
-}
-
 android {
     namespace = "com.tabgl.kaleido"
     compileSdk = 35
@@ -52,25 +26,12 @@ android {
         }
     }
 
-    signingConfigs {
-        create("release") {
-            if (hasReleaseKey) {
-                storeFile = file(releaseKeystorePath!!)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-            }
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (hasReleaseKey) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            // Signed with the debug key so the APK is installable without a keystore.
+            // Replace with a real signingConfig before publishing.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

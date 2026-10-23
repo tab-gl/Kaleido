@@ -214,8 +214,8 @@ suspend fun saveEditedCopy(context: Context, source: Photo, edit: EditState): Ur
 
         // 6. Encode in the chosen format.
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val base = source.name.substringBeforeLast('.', source.name).ifBlank { "Photo" }
-        val name = "${base}_edit_$stamp.${edit.format.extension}"
+        val baseName = source.name.substringBeforeLast('.', source.name).ifBlank { "Photo" }
+        val name = "${baseName}_edit_$stamp.${edit.format.extension}"
         val uri = writePicture(context, name, edit.format.mime) { stream: OutputStream ->
             out.compress(edit.format.compress, edit.quality, stream)
         }

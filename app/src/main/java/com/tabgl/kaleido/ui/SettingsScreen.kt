@@ -41,7 +41,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -66,6 +68,7 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull().orEmpty()
     }
+    val launcherBitmap = remember { ContextCompat.getDrawable(context, R.mipmap.ic_launcher)!!.toBitmap(192, 192).asImageBitmap() }
     val monetSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     var sortOpen by remember { mutableStateOf(false) }
     var webdavOpen by remember { mutableStateOf(false) }
@@ -162,7 +165,7 @@ fun SettingsScreen(
                     .background(Color(0xFF191418)),
             ) {
                 Image(
-                    painter = painterResource(R.drawable.ic_launcher),
+                    bitmap = launcherBitmap,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )

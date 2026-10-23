@@ -1,353 +1,378 @@
 package com.tabgl.kaleido.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.tabgl.kaleido.data.AppSettings
 import com.tabgl.kaleido.data.MediaRepository
 import com.tabgl.kaleido.data.Photo
+import com.tabgl.kaleido.data.SortOrder
+import com.tabgl.kaleido.data.WebDavSync
 import com.tabgl.kaleido.data.arrangedBy
 import com.tabgl.kaleido.data.hasMediaAccess
 import com.tabgl.kaleido.data.mediaPermissions
 import com.tabgl.kaleido.data.toAlbums
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlin.math.abs
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-enum class Tab { Photos, Albums, Starred, Settings }
-
-/** The photos the viewer can swipe through, and the one that was tapped. */
-private data class ViewerRequest(val photos: List<Photo>, val index: Int)
-
-/** How long a burst of MediaStore changes is coalesced into one reload. */
-private const val RELOAD_DEBOUNCE_MS = 300L
-
-/** Opens this app's page in system settings, where the user can grant photo access. */
-private fun appSettingsIntent(packageName: String): Intent =
-    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
-
-/** Depth in the navigation: Photos 0, Albums 1, an album's photos 2. Used to pick the slide direction. */
-private fun screenRank(state: Pair<Tab, String?>): Int =
-    if (state.second != null) 2 else state.first.ordinal
-
-/** Grid density cycles 3 → 4 → 5 → 3. */
-private fun nextColumns(current: Int): Int = if (current >= 5) 3 else current + 1
-
+/**
+ * Top-level screen: permission gate, the three tabs, galleries, viewer, editor, delete and sync.
+ * Photos come from MediaStore and reload when the library changes (debounced).
+ */
 @Composable
 fun KaleidoApp(settings: AppSettings) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var granted by remember { mutableStateOf(context.hasMediaAccess()) }
-    var requested by rememberSaveable { mutableStateOf(false) }
-    var loaded by remember { mutableStateOf(false) }
-    var refreshKey by remember { mutableStateOf(0) }
-    var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
-    var tab by rememberSaveable { mutableStateOf(Tab.Photos) }
-    var openAlbum by rememberSaveable { mutableStateOf<String?>(null) }
-    var viewer by remember { mutableStateOf<ViewerRequest?>(null) }
+    var permanentlyDenied by remember { mutableStateOf(false) }
+    var photos by remember { mutableStateOf<List<Photo>?>(null) }
+    var reloadTick by remember { mutableIntStateOf(0) }
+
+    var tab by remember { mutableStateOf(Tab.PHOTOS) }
+    var openAlbum by remember { mutableStateOf<String?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var starredOnly by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<Long>()) }
+    var viewing by remember { mutableStateOf<Pair<List<Photo>, Int>?>(null) }
     var editing by remember { mutableStateOf<Photo?>(null) }
-    var navVisible by remember { mutableStateOf(true) }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
-    var pendingDelete by remember { mutableStateOf(emptySet<Long>()) }
+    var pendingDelete by remember { mutableStateOf<List<Photo>?>(null) }
+    var syncing by remember { mutableStateOf(false) }
+    var syncMessage by remember { mutableStateOf("") }
+
+    val all = photos.orEmpty()
+    val photoList = remember(all, settings.sortOrder, starredOnly, settings.starred, query) {
+        all.visible(starredOnly, settings.starred, query, settings.sortOrder)
+    }
+    val albums = remember(all) { all.toAlbums() }
+    val albumPhotos = remember(all, openAlbum, settings.sortOrder, settings.starred, starredOnly, query) {
+        all.filter { it.album == openAlbum }.visible(starredOnly, settings.starred, query, settings.sortOrder)
+    }
+
+    // Changing tab or album clears the selection and search, so nothing stale carries over.
+    LaunchedEffect(tab, openAlbum) {
+        selected = emptySet()
+        query = ""
+        searchOpen = false
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
+        ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        // Check the system state rather than the request result: partial ("selected photos")
-        // access is reported differently on Android 14+.
-        requested = true
         granted = context.hasMediaAccess()
+        // After a denial with no rationale left, Android will not show the dialog again.
+        permanentlyDenied = !granted && activity != null &&
+            mediaPermissions().none { ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
     }
 
-    // Android 11+ asks the user to confirm deletes through the system dialog.
     val deleteLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            settings.saveStarred(settings.starred - pendingDelete)
-            selectedIds = selectedIds - pendingDelete
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) {
+        selected = emptySet()
+        reloadTick++
+    }
+
+    // Returning from system Settings may have granted access.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) granted = context.hasMediaAccess()
         }
-        pendingDelete = emptySet()
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(Unit) {
-        if (!granted) permissionLauncher.launch(mediaPermissions())
-    }
-
-    // Reload when the MediaStore changes, so new and deleted photos appear without a restart.
+    // Any change to the photo library triggers a reload.
     DisposableEffect(granted) {
-        if (!granted) return@DisposableEffect onDispose {}
+        if (!granted) return@DisposableEffect onDispose { }
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                refreshKey++
+                reloadTick++
             }
         }
-        context.contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            true,
-            observer,
-        )
+        context.contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer)
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
 
-    LaunchedEffect(granted, refreshKey) {
+    LaunchedEffect(granted, reloadTick) {
         if (granted) {
-            // A bulk import fires many change events. Wait briefly so they collapse into one reload.
-            // Each new event restarts this effect, so only the last one in a burst actually loads.
-            if (refreshKey > 0) delay(RELOAD_DEBOUNCE_MS)
-            // If the query fails, show the empty state rather than spinning forever.
-            photos = try {
-                MediaRepository.loadPhotos(context)
-            } catch (e: Exception) {
-                emptyList()
-            }
-            loaded = true
+            // Debounce: a burst of changes (a camera burst, a sync) loads once.
+            delay(if (photos == null) 0L else 350L)
+            photos = MediaRepository.loadPhotos(context)
         }
     }
 
-    val ordered = remember(photos, settings.sortOrder) { photos.arrangedBy(settings.sortOrder) }
-    val visiblePhotos = remember(ordered, query) {
-        if (query.isBlank()) {
-            ordered
-        } else {
-            ordered.filter { photo ->
-                photo.name.contains(query, ignoreCase = true) ||
-                    photo.album.contains(query, ignoreCase = true)
-            }
-        }
-    }
-    val starredPhotos = remember(ordered, settings.starred) { ordered.filter { it.id in settings.starred } }
-    val albums = remember(photos) { photos.toAlbums() }
-    val albumPhotos = remember(ordered, openAlbum) {
-        openAlbum?.let { name -> ordered.filter { it.album == name } }.orEmpty()
-    }
-    val selectedPhotos = remember(ordered, selectedIds) { ordered.filter { it.id in selectedIds } }
-    val allSelectedStarred = selectedPhotos.isNotEmpty() && selectedPhotos.all { it.id in settings.starred }
-
-    // Hide the floating navbar while scrolling down through content; show it on scroll up.
-    val navScroll = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (abs(available.y) > 2f) navVisible = available.y > 0f
-                return Offset.Zero
-            }
-        }
+    fun toggleStarred(ids: Set<Long>) {
+        val everyStarred = ids.all { it in settings.starred }
+        settings.saveStarred(if (everyStarred) settings.starred - ids else settings.starred + ids)
     }
 
-    fun toggleStar(photo: Photo) {
-        val current = settings.starred
-        settings.saveStarred(if (photo.id in current) current - photo.id else current + photo.id)
-    }
-
-    fun starSelected() {
-        val ids = selectedPhotos.mapTo(HashSet()) { it.id }
-        val current = settings.starred
-        settings.saveStarred(if (allSelectedStarred) current - ids else current + ids)
-    }
-
-    fun requestDelete(targets: List<Photo>) {
-        if (targets.isEmpty()) return
-        val resolver = context.contentResolver
+    fun performDelete(targets: List<Photo>) {
+        val uris = targets.map { it.uri }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            pendingDelete = targets.mapTo(HashSet()) { it.id }
-            val request = MediaStore.createDeleteRequest(resolver, targets.map { it.uri })
-            deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+            // Android 11+ asks the user once through the system dialog.
+            deleteLauncher.launch(IntentSenderRequest.Builder(deleteRequest(context, uris)).build())
         } else {
-            // Before Android 11 an app can delete only the photos it can write. Any others are skipped.
-            val gone = targets
-                .filter { photo -> runCatching { resolver.delete(photo.uri, null, null) > 0 }.getOrDefault(false) }
-                .mapTo(HashSet()) { it.id }
-            settings.saveStarred(settings.starred - gone)
-            selectedIds = selectedIds - gone
-            Toast.makeText(context, "Deleted ${gone.size} of ${targets.size}", Toast.LENGTH_SHORT).show()
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    uris.forEach { runCatching { context.contentResolver.delete(it, null, null) } }
+                }
+                selected = emptySet()
+                reloadTick++
+            }
         }
     }
 
-    val selection = SelectionControls(
-        selected = selectedIds,
-        allStarred = allSelectedStarred,
-        onToggle = { id -> selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id },
-        onStar = { starSelected() },
-        onShare = { sharePhotos(context, selectedPhotos) },
-        onDelete = { requestDelete(selectedPhotos) },
-        onClear = { selectedIds = emptySet() },
-    )
-
-    // Back closes things in order: the viewer and editor are their own dialogs, then selection,
-    // then search, then an open album.
-    BackHandler(enabled = openAlbum != null && viewer == null && editing == null) { openAlbum = null }
-    BackHandler(enabled = searchOpen && viewer == null && editing == null) {
-        searchOpen = false
-        query = ""
-    }
-    BackHandler(enabled = selectedIds.isNotEmpty() && viewer == null && editing == null) {
-        selectedIds = emptySet()
+    fun startSync() {
+        scope.launch {
+            syncing = true
+            syncMessage = ""
+            val result = WebDavSync.run(context, settings) { progress -> scope.launch { syncMessage = progress } }
+            syncing = false
+            syncMessage = result
+            if (!result.startsWith("Sync failed")) {
+                settings.saveLastSync(timestampNow())
+                reloadTick++
+            }
+        }
     }
 
-    Box(modifier = Modifier.fillMaxSize().nestedScroll(navScroll)) {
-        when {
-            !granted -> PermissionPrompt(
-                showSettings = requested,
-                onRequest = { permissionLauncher.launch(mediaPermissions()) },
-                onOpenSettings = { context.startActivity(appSettingsIntent(context.packageName)) },
-            )
+    val cycleColumns: () -> Unit = {
+        settings.saveColumns(
+            when (settings.columns) {
+                3 -> 4
+                4 -> 5
+                else -> 3
+            },
+        )
+    }
 
-            !loaded -> LoadingState()
+    BackHandler(enabled = tab != Tab.PHOTOS && openAlbum == null) { tab = Tab.PHOTOS }
+    BackHandler(enabled = openAlbum != null) { openAlbum = null }
 
-            else -> AnimatedContent(
-                targetState = tab to openAlbum,
-                // Forward (Photos → Albums → an album) slides in from the right; back slides from the left.
-                transitionSpec = {
-                    val towards = if (screenRank(targetState) > screenRank(initialState)) {
-                        SlideDirection.Left
-                    } else {
-                        SlideDirection.Right
-                    }
-                    (slideIntoContainer(towards, tween(320)) + fadeIn(tween(220))) togetherWith
-                        (slideOutOfContainer(towards, tween(320)) + fadeOut(tween(160)))
+    // One gallery for both the Photos tab and an open album. Selection, sort and star work the same in each.
+    @Composable
+    fun Gallery(title: String, list: List<Photo>, onBack: (() -> Unit)?, withSearch: Boolean) {
+        Box(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
+            GalleryScreen(
+                title = title,
+                photos = list,
+                columns = settings.columns,
+                onCycleColumns = cycleColumns,
+                onOpen = { index -> viewing = list to index },
+                onBack = onBack,
+                search = if (withSearch) {
+                    SearchControls(
+                        open = searchOpen,
+                        query = query,
+                        onToggle = {
+                            searchOpen = !searchOpen
+                            if (!searchOpen) query = ""
+                        },
+                        onQueryChange = { query = it },
+                    )
+                } else {
+                    null
                 },
-                label = "screen",
-            ) { (currentTab, album) ->
-                when (currentTab) {
-                    Tab.Photos -> GalleryScreen(
-                        title = "Photos",
-                        photos = visiblePhotos,
-                        columns = settings.columns,
-                        onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
-                        onOpen = { index -> viewer = ViewerRequest(visiblePhotos, index) },
-                        search = SearchControls(
-                            open = searchOpen,
-                            query = query,
-                            onToggle = {
-                                searchOpen = !searchOpen
-                                if (!searchOpen) query = ""
-                            },
-                            onQueryChange = { query = it },
-                        ),
-                        selection = selection,
-                        sort = SortControls(order = settings.sortOrder, onSelect = { settings.saveSortOrder(it) }),
-                        starred = settings.starred,
+                selection = SelectionControls(
+                    selected = selected,
+                    allStarred = selected.isNotEmpty() && selected.all { it in settings.starred },
+                    onToggle = { id -> selected = if (id in selected) selected - id else selected + id },
+                    onStar = { toggleStarred(selected) },
+                    onShare = { sharePhotos(context, list.filter { it.id in selected }) },
+                    onDelete = { pendingDelete = list.filter { it.id in selected } },
+                    onClear = { selected = emptySet() },
+                ),
+                sort = SortControls(order = settings.sortOrder, onSelect = settings::saveSortOrder),
+                starred = settings.starred,
+                starredOnly = starredOnly,
+                onToggleStarredOnly = { starredOnly = !starredOnly },
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (!granted && tab != Tab.SETTINGS) {
+            PermissionPrompt(
+                showSettings = permanentlyDenied,
+                onRequest = { permissionLauncher.launch(mediaPermissions()) },
+                onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
+            )
+        } else {
+            when (tab) {
+                Tab.PHOTOS -> if (photos == null) {
+                    LoadingState()
+                } else {
+                    Gallery(title = "Photos", list = photoList, onBack = null, withSearch = true)
+                }
+
+                Tab.ALBUMS -> when {
+                    openAlbum != null -> Gallery(
+                        title = openAlbum.orEmpty(),
+                        list = albumPhotos,
+                        onBack = { openAlbum = null },
+                        withSearch = false,
                     )
 
-                    Tab.Starred -> GalleryScreen(
-                        title = "Starred",
-                        photos = starredPhotos,
-                        columns = settings.columns,
-                        onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
-                        onOpen = { index -> viewer = ViewerRequest(starredPhotos, index) },
-                        selection = selection,
-                        starred = settings.starred,
-                    )
-
-                    Tab.Settings -> SettingsScreen(settings = settings)
-
-                    Tab.Albums -> if (album == null) {
-                        AlbumsScreen(
-                            albums = albums,
-                            onOpen = { openAlbum = it.name },
-                        )
-                    } else {
-                        GalleryScreen(
-                            title = album,
-                            photos = albumPhotos,
-                            columns = settings.columns,
-                            onCycleColumns = { settings.saveColumns(nextColumns(settings.columns)) },
-                            onOpen = { index -> viewer = ViewerRequest(albumPhotos, index) },
-                            onBack = { openAlbum = null },
-                            selection = selection,
-                            starred = settings.starred,
-                        )
+                    photos == null -> LoadingState()
+                    else -> Box(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
+                        AlbumsScreen(albums = albums, onOpen = { openAlbum = it.name })
                     }
                 }
-            }
-        }
 
-        if (granted && loaded) {
-            AnimatedVisibility(
-                visible = navVisible,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
-                enter = slideInVertically(initialOffsetY = { it * 2 }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it * 2 }) + fadeOut(),
-            ) {
-                FloatingNavBar(
-                    selected = tab,
-                    onSelect = { selected ->
-                        tab = selected
-                        openAlbum = null
-                        searchOpen = false
-                        query = ""
-                        selectedIds = emptySet()
-                        navVisible = true
-                    },
+                Tab.SETTINGS -> SettingsScreen(
+                    settings = settings,
+                    syncing = syncing,
+                    syncMessage = syncMessage,
+                    onSync = { startSync() },
                 )
             }
         }
 
-        viewer?.let { request ->
-            PhotoViewer(
-                photos = request.photos,
-                startIndex = request.index,
-                starred = settings.starred,
-                onDismiss = { viewer = null },
-                onToggleStar = { toggleStar(it) },
-                onEdit = { editing = it },
-                onDelete = {
-                    viewer = null
-                    requestDelete(listOf(it))
-                },
-            )
-        }
+        FloatingNavBar(
+            selected = tab,
+            onSelect = { tab = it },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+        )
+    }
 
-        // Stacked after the viewer so it draws on top of it.
-        editing?.let { photo ->
-            EditorDialog(
-                photo = photo,
-                onDismiss = { editing = null },
-                onSaved = { editing = null },
-            )
-        }
+    viewing?.let { (list, index) ->
+        PhotoViewer(
+            photos = list,
+            startIndex = index,
+            starred = settings.starred,
+            onDismiss = { viewing = null },
+            onToggleStar = { toggleStarred(setOf(it.id)) },
+            onEdit = {
+                viewing = null
+                editing = it
+            },
+            onDelete = {
+                viewing = null
+                pendingDelete = listOf(it)
+            },
+        )
+    }
+
+    editing?.let { photo ->
+        EditorScreen(
+            photo = photo,
+            onDismiss = { editing = null },
+            onSaved = {
+                editing = null
+                reloadTick++
+            },
+        )
+    }
+
+    pendingDelete?.let { targets ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(if (targets.size == 1) "Delete this photo?" else "Delete ${targets.size} photos?") },
+            text = { Text("They are removed from this phone. This can't be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        performDelete(targets)
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 }
+
+/** Filters and sorts a list the way the gallery shows it. */
+private fun List<Photo>.visible(
+    starredOnly: Boolean,
+    starred: Set<Long>,
+    query: String,
+    order: SortOrder,
+): List<Photo> = filter { !starredOnly || it.id in starred }
+    .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+    .arrangedBy(order)
+
+@RequiresApi(Build.VERSION_CODES.R)
+private fun deleteRequest(context: Context, uris: List<Uri>): IntentSender =
+    MediaStore.createDeleteRequest(context.contentResolver, uris).intentSender
+
+private fun appSettingsIntent(context: Context): Intent =
+    Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+/** Opens the system share sheet for one or more photos. */
+internal fun sharePhotos(context: Context, targets: List<Photo>) {
+    if (targets.isEmpty()) return
+    val intent = if (targets.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_STREAM, targets.first().uri)
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(targets.map { it.uri }))
+        }
+    }
+    intent.type = "image/*"
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    context.startActivity(Intent.createChooser(intent, null))
+}
+
+private fun timestampNow(): String =
+    DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.now())

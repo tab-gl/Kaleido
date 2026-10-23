@@ -1,134 +1,78 @@
 package com.tabgl.kaleido.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Collections
-import androidx.compose.material.icons.rounded.Photo
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.animateColorAsState
+import com.tabgl.kaleido.R
 
-/**
- * A floating, pill-shaped navigation bar that hovers above the content.
- * The selected item expands to show its label; the others collapse to icons.
- */
-@Composable
-fun FloatingNavBar(
-    selected: Tab,
-    onSelect: (Tab) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier
-            .shadow(elevation = 14.dp, shape = CircleShape, clip = false)
-            .height(72.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            NavItem(
-                label = "Photos",
-                icon = Icons.Rounded.Photo,
-                selected = selected == Tab.Photos,
-                onClick = { onSelect(Tab.Photos) },
-            )
-            NavItem(
-                label = "Albums",
-                icon = Icons.Rounded.Collections,
-                selected = selected == Tab.Albums,
-                onClick = { onSelect(Tab.Albums) },
-            )
-            NavItem(
-                label = "Starred",
-                icon = Icons.Rounded.Star,
-                selected = selected == Tab.Starred,
-                onClick = { onSelect(Tab.Starred) },
-            )
-            NavItem(
-                label = "Settings",
-                icon = Icons.Rounded.Settings,
-                selected = selected == Tab.Settings,
-                onClick = { onSelect(Tab.Settings) },
-            )
-        }
-    }
+/** The three top-level destinations. */
+enum class Tab(val label: String, @DrawableRes val icon: Int) {
+    PHOTOS("Photos", R.drawable.hi_photos),
+    ALBUMS("Albums", R.drawable.hi_albums),
+    SETTINGS("Settings", R.drawable.hi_settings),
 }
 
+/** A floating pill with three destinations. The selected one shows its label next to the icon. */
 @Composable
-private fun NavItem(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val container by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-        label = "navContainer",
-    )
-    val content by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-        label = "navContent",
-    )
-
-    Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(container)
-            .selectable(selected = selected, onClick = onClick, role = Role.Tab)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+fun FloatingNavBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 6.dp,
     ) {
-        Icon(imageVector = icon, contentDescription = label, tint = content)
-        AnimatedVisibility(
-            visible = selected,
-            enter = fadeIn() + expandHorizontally(),
-            exit = fadeOut() + shrinkHorizontally(),
+        Row(
+            modifier = Modifier.padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-            )
+            Tab.entries.forEach { tab ->
+                val isSelected = tab == selected
+                val background by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    label = "navBackground",
+                )
+                val content = if (isSelected) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(background)
+                        .clickable(role = Role.Tab) { onSelect(tab) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HiIcon(tab.icon, tab.label, content)
+                    AnimatedVisibility(visible = isSelected) {
+                        Text(
+                            text = tab.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = content,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

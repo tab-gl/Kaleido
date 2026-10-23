@@ -1,22 +1,11 @@
 package com.tabgl.kaleido.ui
 
-import android.content.ClipData
-import android.content.Context
-import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,87 +16,45 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.tabgl.kaleido.R
 import com.tabgl.kaleido.data.Photo
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.launch
-
-private const val MAX_ZOOM = 5f
-private const val DOUBLE_TAP_ZOOM = 2.5f
-private const val ZOOM_ANIMATION_MS = 280
-
-private val dateFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.getDefault())
-
-private fun formatDate(epochSeconds: Long): String =
-    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(dateFormatter)
 
 /**
- * Hands one or more photos to the system share sheet. The read grant is attached through
- * ClipData, so the receiving app can read every photo, not just the first.
+ * Full-screen viewer. Swipe between photos, pinch or double-tap to zoom, tap to hide the chrome.
+ * The bottom pill holds the actions for the current photo.
  */
-fun sharePhotos(context: Context, photos: List<Photo>) {
-    if (photos.isEmpty()) return
-    val uris = ArrayList(photos.map { it.uri })
-    val send = if (uris.size == 1) {
-        Intent(Intent.ACTION_SEND).apply {
-            type = "image/*"
-            putExtra(Intent.EXTRA_STREAM, uris.first())
-        }
-    } else {
-        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "image/*"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-        }
-    }
-    send.clipData = ClipData.newUri(context.contentResolver, "Photos", uris.first()).also { clip ->
-        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
-    }
-    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(send, null))
-}
-
-/**
- * Full-screen, swipeable photo viewer.
- * - Opens and closes with a short scale-and-fade.
- * - Tap to show or hide the controls. Double-tap eases in to 2.5x, or back out.
- * - Pinch to zoom, then drag to pan. Swiping between photos is locked while zoomed.
- * - Shows the album and date for the current photo. Share sends it to other apps.
- * Back, the close button and a tap outside the photo all close it.
- */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoViewer(
     photos: List<Photo>,
@@ -119,175 +66,182 @@ fun PhotoViewer(
     onDelete: (Photo) -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = startIndex) { photos.size }
-    var controlsVisible by remember { mutableStateOf(true) }
-    val zoom = remember { Animatable(1f) }
-    val panX = remember { Animatable(0f) }
-    val panY = remember { Animatable(0f) }
+    val pagerState = rememberPagerState(
+        initialPage = startIndex.coerceIn(0, (photos.size - 1).coerceAtLeast(0)),
+    ) { photos.size }
+    // A zoomed photo takes over the horizontal drags, so the pager must stop scrolling.
+    var zoomed by remember { mutableStateOf(false) }
+    var chrome by remember { mutableStateOf(true) }
+    var infoOpen by remember { mutableStateOf(false) }
+    val current = photos.getOrNull(pagerState.currentPage)
 
-    // Starts false and is switched to true on first composition, so the viewer animates in.
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = !zoomed,
+                key = { photos[it].id },
+                beyondViewportPageCount = 1,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                ZoomablePage(
+                    photo = photos[page],
+                    active = page == pagerState.currentPage,
+                    onZoomChange = { zoomed = it },
+                    onTap = { chrome = !chrome },
+                )
+            }
 
-    fun requestClose() {
-        visibleState.targetState = false
-    }
-
-    // Once the exit animation has finished, remove the viewer.
-    LaunchedEffect(visibleState.currentState, visibleState.targetState) {
-        if (!visibleState.targetState && !visibleState.currentState) onDismiss()
-    }
-
-    // Each photo starts at fit-to-screen when the user swipes to it.
-    LaunchedEffect(pagerState.currentPage) {
-        zoom.snapTo(1f)
-        panX.snapTo(0f)
-        panY.snapTo(0f)
-    }
-
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newZoom = (zoom.value * zoomChange).coerceIn(1f, MAX_ZOOM)
-        val newPanX = if (newZoom > 1f) panX.value + panChange.x else 0f
-        val newPanY = if (newZoom > 1f) panY.value + panChange.y else 0f
-        scope.launch {
-            zoom.snapTo(newZoom)
-            panX.snapTo(newPanX)
-            panY.snapTo(newPanY)
-        }
-    }
-
-    val current = photos[pagerState.currentPage]
-
-    Dialog(
-        onDismissRequest = { requestClose() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            modifier = Modifier.fillMaxSize(),
-            enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(260)),
-            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
-        ) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    // While zoomed in, dragging pans the photo instead of changing page.
-                    userScrollEnabled = zoom.value <= 1f,
-                ) { page ->
-                    val isCurrent = page == pagerState.currentPage
-                    AsyncImage(
-                        model = ImageRequest.Builder(context).data(photos[page].uri).build(),
-                        contentDescription = photos[page].name,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                val scale = if (isCurrent) zoom.value else 1f
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = if (isCurrent) panX.value else 0f
-                                translationY = if (isCurrent) panY.value else 0f
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { controlsVisible = !controlsVisible },
-                                    onDoubleTap = {
-                                        val target = if (zoom.value > 1f) 1f else DOUBLE_TAP_ZOOM
-                                        scope.launch { zoom.animateTo(target, tween(ZOOM_ANIMATION_MS)) }
-                                        scope.launch { panX.animateTo(0f, tween(ZOOM_ANIMATION_MS)) }
-                                        scope.launch { panY.animateTo(0f, tween(ZOOM_ANIMATION_MS)) }
-                                    },
-                                )
-                            }
-                            .transformable(state = transformState, canPan = { zoom.value > 1f }),
+            AnimatedVisibility(
+                visible = chrome,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        HiIcon(R.drawable.hi_close, "Close", Color.White)
+                    }
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${photos.size}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
                     )
                 }
+            }
 
+            if (current != null) {
                 AnimatedVisibility(
-                    visible = controlsVisible,
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    visible = chrome,
                     enter = fadeIn(),
                     exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                    val isStarred = current.id in starred
+                    Surface(
+                        modifier = Modifier.navigationBarsPadding().padding(bottom = 20.dp),
+                        shape = RoundedCornerShape(32.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shadowElevation = 6.dp,
                     ) {
-                        IconButton(onClick = { requestClose() }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = "Close",
-                                tint = Color.White,
-                            )
-                        }
-                        Text(
-                            text = "${pagerState.currentPage + 1} / ${photos.size}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White,
-                        )
-                        IconButton(onClick = { sharePhotos(context, listOf(current)) }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Share,
-                                contentDescription = "Share",
-                                tint = Color.White,
-                            )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PillAction(
+                                icon = R.drawable.hi_star,
+                                label = if (isStarred) "Unstar" else "Star",
+                                tint = if (isStarred) Color(0xFFFFC857) else MaterialTheme.colorScheme.onSurface,
+                            ) { onToggleStar(current) }
+                            PillAction(R.drawable.hi_info, "Details") { infoOpen = true }
+                            PillAction(R.drawable.hi_share, "Share") { sharePhotos(context, listOf(current)) }
+                            PillAction(R.drawable.hi_edit, "Edit") { onEdit(current) }
+                            PillAction(
+                                icon = R.drawable.hi_delete,
+                                label = "Delete",
+                                tint = MaterialTheme.colorScheme.error,
+                            ) { onDelete(current) }
                         }
                     }
                 }
+            }
 
-                AnimatedVisibility(
-                    visible = controlsVisible,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                        ) {
-                            val isStarred = current.id in starred
-                            IconButton(onClick = { onToggleStar(current) }) {
-                                Icon(
-                                    imageVector = if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                                    contentDescription = if (isStarred) "Unstar" else "Star",
-                                    tint = Color.White,
-                                )
-                            }
-                            IconButton(onClick = { onEdit(current) }) {
-                                Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = Color.White)
-                            }
-                            IconButton(onClick = { onDelete(current) }) {
-                                Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete", tint = Color.White)
-                            }
-                        }
-                        Text(
-                            text = current.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+            if (infoOpen && current != null) {
+                ModalBottomSheet(onDismissRequest = { infoOpen = false }) {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+                        Text("Details", style = MaterialTheme.typography.titleLarge)
+                        ListItem(
+                            headlineContent = { Text("Name") },
+                            supportingContent = { Text(current.name) },
                         )
-                        Text(
-                            text = "${current.album} · ${formatDate(current.dateAdded)}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        ListItem(
+                            headlineContent = { Text("Album") },
+                            supportingContent = { Text(current.album) },
+                        )
+                        ListItem(
+                            headlineContent = { Text("Added") },
+                            supportingContent = { Text(formatAdded(current.dateAdded)) },
                         )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun PillAction(
+    icon: Int,
+    label: String,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick) {
+        HiIcon(icon, label, tint)
+    }
+}
+
+/** One page: the photo with its own pinch and pan state. Resets when the page is left. */
+@Composable
+private fun ZoomablePage(
+    photo: Photo,
+    active: Boolean,
+    onZoomChange: (Boolean) -> Unit,
+    onTap: () -> Unit,
+) {
+    var scale by remember(photo.id) { mutableFloatStateOf(1f) }
+    var offset by remember(photo.id) { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(active) {
+        if (!active) {
+            scale = 1f
+            offset = Offset.Zero
+        }
+    }
+    AsyncImage(
+        model = photo.uri,
+        contentDescription = photo.name,
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offset.x
+                translationY = offset.y
+            }
+            .pointerInput(photo.id) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = {
+                        val target = if (scale > 1f) 1f else 2.5f
+                        scale = target
+                        if (target == 1f) offset = Offset.Zero
+                        onZoomChange(target > 1f)
+                    },
+                )
+            }
+            .pointerInput(photo.id) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val next = (scale * zoom).coerceIn(1f, 5f)
+                    scale = next
+                    offset = if (next > 1f) offset + pan else Offset.Zero
+                    onZoomChange(next > 1f)
+                }
+            },
+    )
+}
+
+private fun formatAdded(dateAdded: Long): String {
+    // MediaStore reports seconds. Anything this large is already milliseconds.
+    val millis = if (dateAdded < 100_000_000_000L) dateAdded * 1000 else dateAdded
+    return DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(millis))
 }

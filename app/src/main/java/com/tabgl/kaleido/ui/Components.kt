@@ -1,6 +1,7 @@
 package com.tabgl.kaleido.ui
 
 import android.net.Uri
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -19,10 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,36 +36,53 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.tabgl.kaleido.R
 import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
 
-private const val THUMBNAIL_PX = 320
+/** Thumbnails are decoded at this size. Smaller means faster scrolling and less memory. */
+private const val THUMBNAIL_PX = 256
 
 /** "1 item" or "N items". */
 fun itemCountLabel(count: Int): String = if (count == 1) "1 item" else "$count items"
 
-/** Coil request for a thumbnail, with a crossfade so images fade in as they load. */
+/** A Hugeicons vector, tinted with [tint] (defaults to the surrounding content colour). */
+@Composable
+fun HiIcon(
+    @DrawableRes icon: Int,
+    contentDescription: String?,
+    tint: Color = LocalContentColor.current,
+    modifier: Modifier = Modifier,
+) {
+    Icon(
+        painter = painterResource(icon),
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = modifier,
+    )
+}
+
+/** Coil request for a thumbnail. Coil caches it in memory and on disk. */
 @Composable
 private fun rememberThumbnailRequest(uri: Uri): ImageRequest {
     val context = LocalContext.current
     return remember(uri) {
         ImageRequest.Builder(context)
             .data(uri)
-            // Decode thumbnails at grid size, not full resolution: smoother scrolling, less memory.
             .size(THUMBNAIL_PX, THUMBNAIL_PX)
-            .crossfade(true)
             .build()
     }
 }
 
 /**
- * A square thumbnail. Tiles sit edge to edge, so the grid reads as one connected mosaic.
- * It squishes when pressed and fires [onLongClick] with a haptic tick.
- * When [selected], the photo insets, gets a tint and a check badge. A starred photo shows a star.
+ * A square thumbnail. Tiles sit edge to edge, so the grid reads as one connected surface.
+ * It squishes when pressed and fires [onLongClick] with a haptic tick. When [selected], the photo
+ * insets, gets a tint and a check badge. A starred photo shows a small star.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -131,8 +147,8 @@ fun PhotoTile(
                     .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
+                HiIcon(
+                    icon = R.drawable.hi_check,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(16.dp),
@@ -148,8 +164,8 @@ fun PhotoTile(
                     .background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Star,
+                HiIcon(
+                    icon = R.drawable.hi_star,
                     contentDescription = "Starred",
                     tint = Color(0xFFFFC857),
                     modifier = Modifier.size(15.dp),

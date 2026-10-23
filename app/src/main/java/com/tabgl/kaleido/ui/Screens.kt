@@ -1,5 +1,6 @@
 package com.tabgl.kaleido.ui
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,6 +12,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +25,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -30,28 +34,18 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.PhotoLibrary
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material.icons.rounded.SwapVert
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.tabgl.kaleido.R
 import com.tabgl.kaleido.data.Album
 import com.tabgl.kaleido.data.Photo
 import com.tabgl.kaleido.data.PhotoSection
@@ -100,6 +95,27 @@ fun sortLabel(order: SortOrder): String = when (order) {
     SortOrder.NAME -> "Name A to Z"
 }
 
+/** Bottom sheet that picks the sort order. Used by galleries and by Settings. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SortSheet(current: SortOrder, onSelect: (SortOrder) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = "Sort by",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+        )
+        SortOrder.entries.forEach { order ->
+            ListItem(
+                headlineContent = { Text(sortLabel(order)) },
+                trailingContent = { RadioButton(selected = order == current, onClick = null) },
+                modifier = Modifier.clickable { onSelect(order) },
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
 @Composable
 fun PermissionPrompt(
     showSettings: Boolean,
@@ -114,8 +130,8 @@ fun PermissionPrompt(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = Icons.Rounded.PhotoLibrary,
+        HiIcon(
+            icon = R.drawable.hi_photos,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(72.dp),
@@ -137,7 +153,7 @@ fun PermissionPrompt(
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onRequest) { Text("Allow access") }
+        androidx.compose.material3.Button(onClick = onRequest) { Text("Allow access") }
         if (showSettings) {
             // Shown after a request that didn't grant access. Once it has been denied twice,
             // the system stops showing the dialog, so the only way forward is app settings.
@@ -203,6 +219,8 @@ fun GalleryScreen(
     selection: SelectionControls? = null,
     sort: SortControls? = null,
     starred: Set<Long> = emptySet(),
+    starredOnly: Boolean = false,
+    onToggleStarredOnly: (() -> Unit)? = null,
 ) {
     val byName = sort?.order == SortOrder.NAME
     val sections = remember(photos, byName) {
@@ -214,6 +232,7 @@ fun GalleryScreen(
     // Selection mode is on while at least one photo is picked.
     val active = selection?.takeIf { it.selected.isNotEmpty() }
     val tint = MaterialTheme.colorScheme.onBackground
+    var sortSheetOpen by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
@@ -223,42 +242,55 @@ fun GalleryScreen(
             actions = {
                 if (active != null) {
                     IconButton(onClick = active.onStar) {
-                        Icon(
-                            imageVector = if (active.allStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                        HiIcon(
+                            icon = R.drawable.hi_star,
                             contentDescription = if (active.allStarred) "Unstar selected" else "Star selected",
-                            tint = tint,
+                            tint = if (active.allStarred) Color(0xFFFFC857) else tint,
                         )
                     }
                     IconButton(onClick = active.onShare) {
-                        Icon(imageVector = Icons.Rounded.Share, contentDescription = "Share selected", tint = tint)
+                        HiIcon(R.drawable.hi_share, "Share selected", tint)
                     }
                     IconButton(onClick = active.onDelete) {
-                        Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete selected", tint = tint)
+                        HiIcon(R.drawable.hi_delete, "Delete selected", tint)
                     }
                     IconButton(onClick = active.onClear) {
-                        Icon(imageVector = Icons.Rounded.Close, contentDescription = "Clear selection", tint = tint)
+                        HiIcon(R.drawable.hi_close, "Clear selection", tint)
                     }
                 } else {
                     if (search != null) {
                         IconButton(onClick = search.onToggle) {
-                            Icon(
-                                imageVector = Icons.Rounded.Search,
-                                contentDescription = if (search.open) "Close search" else "Search",
-                                tint = tint,
-                            )
+                            HiIcon(R.drawable.hi_search, if (search.open) "Close search" else "Search", tint)
                         }
                     }
-                    if (sort != null) SortMenu(sort)
+                    if (sort != null) {
+                        IconButton(onClick = { sortSheetOpen = true }) {
+                            HiIcon(R.drawable.hi_sort, "Sort: ${sortLabel(sort.order)}", tint)
+                        }
+                    }
                     IconButton(onClick = onCycleColumns) {
-                        Icon(
-                            imageVector = Icons.Rounded.Apps,
-                            contentDescription = "Grid size: $columns per row. Tap to change.",
-                            tint = tint,
-                        )
+                        HiIcon(R.drawable.hi_grid, "Grid size: $columns per row. Tap to change.", tint)
                     }
                 }
             },
         )
+
+        if (onToggleStarredOnly != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = starredOnly,
+                    onClick = onToggleStarredOnly,
+                    label = { Text("Starred") },
+                    leadingIcon = { HiIcon(R.drawable.hi_star, null, Color(0xFFFFC857), Modifier.size(18.dp)) },
+                )
+            }
+        }
 
         if (search != null) {
             AnimatedVisibility(
@@ -280,7 +312,11 @@ fun GalleryScreen(
 
         if (photos.isEmpty()) {
             EmptyState(
-                if (queryText.isNotBlank()) "No photos match \"$queryText\"" else "No photos here yet",
+                when {
+                    queryText.isNotBlank() -> "No photos match \"$queryText\""
+                    starredOnly -> "No starred photos yet. Long-press a photo to star it."
+                    else -> "No photos here yet"
+                },
             )
         } else {
             LazyVerticalGrid(
@@ -320,33 +356,16 @@ fun GalleryScreen(
             }
         }
     }
-}
 
-@Composable
-private fun SortMenu(sort: SortControls) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }) {
-            Icon(
-                imageVector = Icons.Rounded.SwapVert,
-                contentDescription = "Sort: ${sortLabel(sort.order)}",
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            SortOrder.entries.forEach { order ->
-                DropdownMenuItem(
-                    text = { Text(sortLabel(order)) },
-                    onClick = {
-                        sort.onSelect(order)
-                        open = false
-                    },
-                    leadingIcon = {
-                        if (order == sort.order) Icon(imageVector = Icons.Rounded.Check, contentDescription = null)
-                    },
-                )
-            }
-        }
+    if (sortSheetOpen && sort != null) {
+        SortSheet(
+            current = sort.order,
+            onSelect = {
+                sort.onSelect(it)
+                sortSheetOpen = false
+            },
+            onDismiss = { sortSheetOpen = false },
+        )
     }
 }
 
@@ -387,11 +406,7 @@ fun ScreenHeader(
     ) {
         if (onBack != null) {
             IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground,
-                )
+                HiIcon(R.drawable.hi_back, "Back", MaterialTheme.colorScheme.onBackground)
             }
             Spacer(Modifier.width(4.dp))
         }
@@ -443,8 +458,8 @@ fun EmptyState(message: String) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = Icons.Rounded.PhotoLibrary,
+        HiIcon(
+            icon = R.drawable.hi_photos,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.outline,
             modifier = Modifier.size(56.dp),

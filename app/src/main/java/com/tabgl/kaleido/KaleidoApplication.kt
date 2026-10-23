@@ -5,7 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
 import coil.disk.DiskCache
-import coil.video.VideoFrameDecoder
+import coil.decode.VideoFrameDecoder
 import com.tabgl.kaleido.data.CrashLog
 import coil.memory.MemoryCache
 

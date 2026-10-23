@@ -46,11 +46,11 @@ fun FloatingNavBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = 
             Tab.entries.forEach { tab ->
                 val isSelected = tab == selected
                 val background by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                     label = "navBackground",
                 )
                 val content = if (isSelected) {
-                    MaterialTheme.colorScheme.onSecondaryContainer
+                    MaterialTheme.colorScheme.onPrimary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 }

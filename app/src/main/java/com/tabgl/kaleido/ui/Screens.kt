@@ -242,7 +242,8 @@ fun GalleryScreen(
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
-            title = if (active != null) "${active.selected.size} selected" else headline ?: title,
+            title = if (active != null) "${active.selected.size} selected" else title,
+            eyebrow = if (active == null) headline else null,
             subtitle = if (active != null) "Tap photos to add or remove" else subtitle ?: itemCountLabel(photos.size),
             onBack = if (active != null) null else onBack,
             actions = {
@@ -407,6 +408,7 @@ fun AlbumsScreen(albums: List<Album>, onOpen: (Album) -> Unit) {
 fun ScreenHeader(
     title: String,
     subtitle: String,
+    eyebrow: String? = null,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -423,12 +425,22 @@ fun ScreenHeader(
             Spacer(Modifier.width(4.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
+            if (eyebrow != null) {
+                Text(
+                    text = eyebrow,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitle,

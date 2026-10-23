@@ -101,7 +101,9 @@ fun KaleidoApp(settings: AppSettings) {
     var syncing by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf("") }
 
-    val all = photos.orEmpty().filter { it.album !in settings.hiddenAlbums }
+    val all = remember(photos, settings.hiddenAlbums, UnreadablePhotos.ids.size) {
+        photos.orEmpty().filter { it.album !in settings.hiddenAlbums && it.id !in UnreadablePhotos.ids }
+    }
     val albumNames = remember(photos) { photos.orEmpty().map { it.album }.distinct().sorted() }
     // Grid positions survive opening the viewer and switching tabs. Each album starts fresh.
     val photosGrid = rememberLazyGridState()
@@ -241,11 +243,7 @@ fun KaleidoApp(settings: AppSettings) {
             GalleryScreen(
                 title = title,
                 headline = headline,
-                subtitle = if (headline != null) {
-                    settings.displayName.trim().takeIf { it.isNotEmpty() }?.let { "$it · ${itemCountLabel(list.size)}" }
-                } else {
-                    null
-                },
+                subtitle = if (headline != null) itemCountLabel(list.size) else null,
                 onImport = if (withSearch) importAction else null,
                 photos = list,
                 columns = settings.columns,
@@ -282,7 +280,7 @@ fun KaleidoApp(settings: AppSettings) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (!granted && tab != Tab.SETTINGS) {
             PermissionPrompt(
                 showSettings = permanentlyDenied,
@@ -304,7 +302,7 @@ fun KaleidoApp(settings: AppSettings) {
                         list = photoList,
                         onBack = null,
                         withSearch = true,
-                        headline = greetingFor(LocalTime.now().hour),
+                        headline = greetingLine(greetingFor(LocalTime.now().hour), settings.displayName),
                         grid = photosGrid,
                     )
                 }
@@ -442,6 +440,10 @@ internal fun sharePhotos(context: Context, targets: List<Photo>) {
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(intent, null))
 }
+
+/** "Good morning, Sam" when a name is set, otherwise just the greeting. */
+private fun greetingLine(greeting: String, name: String): String =
+    name.trim().takeIf { it.isNotEmpty() }?.let { "$greeting, $it" } ?: greeting
 
 private fun timestampNow(): String =
     DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())

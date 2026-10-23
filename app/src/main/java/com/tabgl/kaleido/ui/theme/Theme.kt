@@ -16,6 +16,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import android.graphics.drawable.ColorDrawable
 
 private val MilkOrangeLight = lightColorScheme(
     primary = Orange,
@@ -100,6 +102,8 @@ fun KaleidoTheme(
     if (!view.isInEditMode) {
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->
+                // Paint the window too, so dark mode never shows the light system background behind the UI.
+                window.setBackgroundDrawable(ColorDrawable(scheme.background.toArgb()))
                 WindowCompat.getInsetsController(window, view).apply {
                     isAppearanceLightStatusBars = !dark
                     isAppearanceLightNavigationBars = !dark

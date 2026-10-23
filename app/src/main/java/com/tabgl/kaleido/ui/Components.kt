@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,11 @@ import com.tabgl.kaleido.data.Photo
 
 /** Thumbnails are decoded at this size. Smaller means faster scrolling and less memory. */
 private const val THUMBNAIL_PX = 256
+
+/** Photos whose thumbnail could not be decoded. Every gallery hides them. */
+object UnreadablePhotos {
+    val ids = mutableStateSetOf<Long>()
+}
 
 /** "1 item" or "N items". */
 fun itemCountLabel(count: Int): String = if (count == 1) "1 item" else "$count items"
@@ -127,6 +133,7 @@ fun PhotoTile(
             model = rememberThumbnailRequest(photo.uri),
             contentDescription = photo.name,
             contentScale = ContentScale.Crop,
+            onError = { UnreadablePhotos.ids.add(photo.id) },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inset)

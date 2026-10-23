@@ -1,5 +1,8 @@
 package com.tabgl.kaleido.ui
 
+import android.widget.MediaController
+import android.widget.VideoView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -84,12 +87,19 @@ fun PhotoViewer(
                 beyondViewportPageCount = 1,
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
-                ZoomablePage(
-                    photo = photos[page],
-                    active = page == pagerState.currentPage,
-                    onZoomChange = { zoomed = it },
-                    onTap = { chrome = !chrome },
-                )
+                if (photos[page].isVideo) {
+                    VideoPage(
+                        photo = photos[page],
+                        active = page == pagerState.currentPage,
+                    )
+                } else {
+                    ZoomablePage(
+                        photo = photos[page],
+                        active = page == pagerState.currentPage,
+                        onZoomChange = { zoomed = it },
+                        onTap = { chrome = !chrome },
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -142,7 +152,7 @@ fun PhotoViewer(
                             ) { onToggleStar(current) }
                             PillAction(R.drawable.hi_info, "Details") { infoOpen = true }
                             PillAction(R.drawable.hi_share, "Share") { sharePhotos(context, listOf(current)) }
-                            PillAction(R.drawable.hi_edit, "Edit") { onEdit(current) }
+                            if (!current.isVideo) PillAction(R.drawable.hi_edit, "Edit") { onEdit(current) }
                             PillAction(
                                 icon = R.drawable.hi_delete,
                                 label = "Delete",
@@ -186,6 +196,29 @@ private fun PillAction(
     IconButton(onClick = onClick) {
         HiIcon(icon, label, tint)
     }
+}
+
+/** One video page. Plays while it is the visible page and pauses when swiped away. Tap shows the controls. */
+@Composable
+private fun VideoPage(photo: Photo, active: Boolean) {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { context ->
+            VideoView(context).apply {
+                setMediaController(MediaController(context).also { it.setAnchorView(this) })
+                setVideoURI(photo.uri)
+                setOnPreparedListener { player -> player.isLooping = false }
+            }
+        },
+        update = { view ->
+            if (active) {
+                if (!view.isPlaying) view.start()
+            } else if (view.isPlaying) {
+                view.pause()
+            }
+        },
+        onRelease = { it.stopPlayback() },
+    )
 }
 
 /** One page: the photo with its own pinch and pan state. Resets when the page is left. */

@@ -169,7 +169,8 @@ fun KaleidoApp(settings: AppSettings) {
                 reloadTick++
             }
         }
-        context.contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer)
+        val collections = listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        collections.forEach { context.contentResolver.registerContentObserver(it, true, observer) }
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
 
@@ -190,7 +191,8 @@ fun KaleidoApp(settings: AppSettings) {
         val uris = targets.map { it.uri }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+ asks the user once through the system dialog.
-            deleteLauncher.launch(IntentSenderRequest.Builder(deleteRequest(context, uris)).build())
+            runCatching { deleteLauncher.launch(IntentSenderRequest.Builder(deleteRequest(context, uris)).build()) }
+                .onFailure { Toast.makeText(context, "Couldn't start delete", Toast.LENGTH_SHORT).show() }
         } else {
             scope.launch {
                 withContext(Dispatchers.IO) {
@@ -436,7 +438,7 @@ internal fun sharePhotos(context: Context, targets: List<Photo>) {
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(targets.map { it.uri }))
         }
     }
-    intent.type = "image/*"
+    intent.type = if (targets.any { it.isVideo }) "*/*" else "image/*"
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(intent, null))
 }

@@ -16,9 +16,11 @@ private const val READ_MEDIA_VISUAL_USER_SELECTED = "android.permission.READ_MED
 fun mediaPermissions(): Array<String> = when {
     Build.VERSION.SDK_INT >= 34 -> arrayOf(
         Manifest.permission.READ_MEDIA_IMAGES,
+        Manifest.permission.READ_MEDIA_VIDEO,
         READ_MEDIA_VISUAL_USER_SELECTED,
     )
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
 

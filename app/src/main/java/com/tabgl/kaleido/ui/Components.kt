@@ -1,5 +1,6 @@
 package com.tabgl.kaleido.ui
 
+import com.tabgl.kaleido.data.formatDuration
 import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
@@ -12,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -139,6 +141,7 @@ fun PhotoTile(
                 .padding(inset)
                 .clip(RoundedCornerShape(16.dp)),
         )
+        if (photo.isVideo) VideoBadge(photo.durationMs, Modifier.align(Alignment.BottomStart))
         if (selected) {
             Box(
                 modifier = Modifier
@@ -224,6 +227,27 @@ fun AlbumTile(album: Album, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+}
+
+/** A small play icon and length in the corner of a video thumbnail. */
+@Composable
+private fun VideoBadge(durationMs: Long, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .padding(6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HiIcon(R.drawable.hi_play, "Video", Color.White, Modifier.size(12.dp))
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            modifier = Modifier.padding(start = 4.dp),
         )
     }
 }

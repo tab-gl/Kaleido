@@ -1,5 +1,9 @@
 package com.tabgl.kaleido.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.material3.TextButton
+import com.tabgl.kaleido.data.CrashLog
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -177,6 +181,7 @@ fun SettingsScreen(
             modifier = Modifier.clickable { webdavOpen = true },
         )
 
+        LastCrashCard()
         SectionTitle("About")
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -372,4 +377,34 @@ private fun SectionTitle(text: String) {
 private fun openLink(context: Context, url: String) {
     // A device with no browser must not crash the settings screen.
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Shows the last uncaught crash, if there is one, so it can be copied and sent for a fix. */
+@Composable
+private fun LastCrashCard() {
+    val context = LocalContext.current
+    var report by remember { mutableStateOf(CrashLog.read(context)) }
+    val text = report ?: return
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(
+            text = "Last crash",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            text = text.take(2000),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row {
+            TextButton(onClick = {
+                context.getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("Kaleido crash", text))
+            }) { Text("Copy") }
+            TextButton(onClick = {
+                CrashLog.clear(context)
+                report = null
+            }) { Text("Clear") }
+        }
+    }
 }

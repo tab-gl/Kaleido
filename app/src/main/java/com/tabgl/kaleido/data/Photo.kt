@@ -13,7 +13,15 @@ data class Photo(
     val name: String,
     val dateAdded: Long,
     val album: String,
+    val isVideo: Boolean = false,
+    val durationMs: Long = 0L,
 )
+
+/** "m:ss" for video length badges. */
+fun formatDuration(ms: Long): String {
+    val seconds = ms / 1000
+    return "%d:%02d".format(seconds / 60, seconds % 60)
+}
 
 data class Album(
     val name: String,

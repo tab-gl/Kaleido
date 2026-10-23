@@ -111,7 +111,6 @@ fun KaleidoTheme(
     MaterialTheme(
         colorScheme = scheme,
         typography = AppTypography,
-        typography = Typography(),
         content = content,
     )
 }

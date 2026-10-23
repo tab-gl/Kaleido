@@ -32,7 +32,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -222,6 +224,7 @@ fun GalleryScreen(
     starredOnly: Boolean = false,
     onToggleStarredOnly: (() -> Unit)? = null,
     headline: String? = null,
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     val byName = sort?.order == SortOrder.NAME
     val sections = remember(photos, byName) {
@@ -321,6 +324,7 @@ fun GalleryScreen(
             )
         } else {
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(columns),
                 // Zero spacing: tiles touch, so the grid reads as one connected surface.
                 contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp),

@@ -125,6 +125,9 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
 
     var edit by remember { mutableStateOf(EditState()) }
     val history = remember { mutableStateListOf<EditState>() }
+    val redoStack = remember { mutableStateListOf<EditState>() }
+    // True while the before-view button is held: shows the untouched photo with no overlays.
+    var comparing by remember { mutableStateOf(false) }
     var tool by remember { mutableStateOf(Tool.NONE) }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var pendingText by remember { mutableStateOf<Pt?>(null) }
@@ -142,11 +145,22 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
 
     fun commit(next: EditState) {
         history.add(edit)
+        redoStack.clear()
         edit = next
     }
 
     fun undo() {
-        if (history.isNotEmpty()) edit = history.removeAt(history.lastIndex)
+        if (history.isNotEmpty()) {
+            redoStack.add(edit)
+            edit = history.removeAt(history.lastIndex)
+        }
+    }
+
+    fun redoAction() {
+        if (redoStack.isNotEmpty()) {
+            history.add(edit)
+            edit = redoStack.removeAt(redoStack.lastIndex)
+        }
     }
 
     Dialog(
@@ -173,8 +187,24 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                     color = ink,
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                 )
+                IconButton(
+                    onClick = {},
+                    enabled = !saving,
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures(onPress = {
+                            comparing = true
+                            tryAwaitRelease()
+                            comparing = false
+                        })
+                    },
+                ) {
+                    HiIcon(R.drawable.hi_eye, "Hold to see original", ink)
+                }
                 IconButton(onClick = { undo() }, enabled = history.isNotEmpty() && !saving) {
                     HiIcon(R.drawable.hi_undo, "Undo", ink)
+                }
+                IconButton(onClick = { redoAction() }, enabled = redoStack.isNotEmpty() && !saving) {
+                    HiIcon(R.drawable.hi_undo, "Redo", ink, Modifier.graphicsLayer { scaleX = -1f })
                 }
                 Button(
                     enabled = !saving && dims != null,
@@ -208,8 +238,8 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                             .aspectRatio(d.first.toFloat() / d.second)
                             .onSizeChanged { boxSize = it }
                             .graphicsLayer {
-                                rotationZ = edit.rotation.toFloat()
-                                scaleX = if (edit.flipX) -1f else 1f
+                                rotationZ = if (comparing) 0f else edit.rotation.toFloat()
+                                scaleX = if (!comparing && edit.flipX) -1f else 1f
                             }
                             .pointerInput(tool) {
                                 when (tool) {
@@ -273,10 +303,10 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                             model = photo.uri,
                             contentDescription = photo.name,
                             contentScale = ContentScale.FillBounds,
-                            colorFilter = ColorFilter.colorMatrix(ColorMatrix(edit.colorMatrix())),
+                            colorFilter = if (comparing) null else ColorFilter.colorMatrix(ColorMatrix(edit.colorMatrix())),
                             modifier = Modifier.fillMaxSize(),
                         )
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                        if (!comparing) Canvas(modifier = Modifier.fillMaxSize()) {
                             val w = size.width
                             val h = size.height
 

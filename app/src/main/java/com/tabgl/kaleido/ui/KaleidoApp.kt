@@ -21,6 +21,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import java.time.LocalTime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -92,7 +94,11 @@ fun KaleidoApp(settings: AppSettings) {
     var syncing by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf("") }
 
-    val all = photos.orEmpty()
+    val all = photos.orEmpty().filter { it.album !in settings.hiddenAlbums }
+    val albumNames = remember(photos) { photos.orEmpty().map { it.album }.distinct().sorted() }
+    // Grid positions survive opening the viewer and switching tabs. Each album starts fresh.
+    val photosGrid = rememberLazyGridState()
+    val albumGrid = remember(openAlbum) { LazyGridState() }
     val photoList = remember(all, settings.sortOrder, starredOnly, settings.starred, query) {
         all.visible(starredOnly, settings.starred, query, settings.sortOrder)
     }
@@ -209,6 +215,7 @@ fun KaleidoApp(settings: AppSettings) {
         onBack: (() -> Unit)?,
         withSearch: Boolean,
         headline: String? = null,
+        grid: LazyGridState,
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
             GalleryScreen(
@@ -272,6 +279,7 @@ fun KaleidoApp(settings: AppSettings) {
                         onBack = null,
                         withSearch = true,
                         headline = greetingFor(LocalTime.now().hour, settings.displayName),
+                        grid = photosGrid,
                     )
                 }
 
@@ -280,6 +288,7 @@ fun KaleidoApp(settings: AppSettings) {
                         title = openAlbum.orEmpty(),
                         list = albumPhotos,
                         onBack = { openAlbum = null },
+                        grid = albumGrid,
                         withSearch = false,
                     )
 
@@ -294,6 +303,7 @@ fun KaleidoApp(settings: AppSettings) {
                     syncing = syncing,
                     syncMessage = syncMessage,
                     onSync = { startSync() },
+                    albumNames = albumNames,
                 )
             }
             }

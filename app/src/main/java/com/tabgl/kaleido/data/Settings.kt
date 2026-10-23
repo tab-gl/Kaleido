@@ -38,6 +38,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         private set
     var lastSync by mutableStateOf(prefs.getString(KEY_LAST_SYNC, "").orEmpty())
     var displayName by mutableStateOf(prefs.getString(KEY_NAME, "").orEmpty())
+    var hiddenAlbums by mutableStateOf(prefs.getStringSet(KEY_HIDDEN, emptySet()).orEmpty().toSet())
         private set
 
     /** A short random tag that keeps this phone's uploads apart from other devices' on the same server. */
@@ -63,6 +64,11 @@ class AppSettings(private val prefs: SharedPreferences) {
     fun saveSortOrder(order: SortOrder) {
         sortOrder = order
         prefs.edit().putString(KEY_SORT, order.name).apply()
+    }
+
+    fun saveHiddenAlbums(names: Set<String>) {
+        hiddenAlbums = names.toSet()
+        prefs.edit().putStringSet(KEY_HIDDEN, HashSet(names)).apply()
     }
 
     fun saveStarred(ids: Set<Long>) {
@@ -116,6 +122,7 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY_THEME = "theme"
+        const val KEY_HIDDEN = "hidden_albums"
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_COLUMNS = "columns"
         const val KEY_SORT = "sort"

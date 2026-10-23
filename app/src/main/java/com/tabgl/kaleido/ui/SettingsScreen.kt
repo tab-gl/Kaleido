@@ -61,6 +61,7 @@ fun SettingsScreen(
     syncing: Boolean,
     syncMessage: String,
     onSync: () -> Unit,
+    albumNames: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -72,6 +73,7 @@ fun SettingsScreen(
     val monetSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     var sortOpen by remember { mutableStateOf(false) }
     var webdavOpen by remember { mutableStateOf(false) }
+    var hiddenOpen by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -147,6 +149,16 @@ fun SettingsScreen(
             modifier = Modifier.clickable { sortOpen = true },
         )
 
+        ListItem(
+            headlineContent = { Text("Hidden albums") },
+            supportingContent = {
+                Text(
+                    if (settings.hiddenAlbums.isEmpty()) "None hidden" else "${settings.hiddenAlbums.size} hidden",
+                )
+            },
+            modifier = Modifier.clickable { hiddenOpen = true },
+        )
+
         SectionTitle("Cloud")
         ListItem(
             headlineContent = { Text("WebDAV sync") },
@@ -211,6 +223,9 @@ fun SettingsScreen(
         )
     }
 
+    if (hiddenOpen) {
+        HiddenAlbumsSheet(settings = settings, albumNames = albumNames, onDismiss = { hiddenOpen = false })
+    }
     if (sortOpen) {
         SortSheet(
             current = settings.sortOrder,
@@ -307,6 +322,34 @@ private fun WebDavSheet(
                     text = "Last sync: ${settings.lastSync}",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HiddenAlbumsSheet(settings: AppSettings, albumNames: List<String>, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+            Text("Hidden albums", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Hidden albums are only hidden inside Kaleido. Nothing is deleted.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (albumNames.isEmpty()) {
+                Text("No albums yet.", style = MaterialTheme.typography.bodyMedium)
+            }
+            albumNames.forEach { name ->
+                val hidden = name in settings.hiddenAlbums
+                ListItem(
+                    headlineContent = { Text(name) },
+                    trailingContent = { Switch(checked = !hidden, onCheckedChange = null) },
+                    modifier = Modifier.clickable {
+                        settings.saveHiddenAlbums(if (hidden) settings.hiddenAlbums - name else settings.hiddenAlbums + name)
+                    },
                 )
             }
         }

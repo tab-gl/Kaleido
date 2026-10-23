@@ -95,6 +95,7 @@ fun KaleidoApp(settings: AppSettings) {
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var starredOnly by remember { mutableStateOf(false) }
+    var videosOnly by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(emptySet<Long>()) }
     var viewing by remember { mutableStateOf<Pair<List<Photo>, Int>?>(null) }
     var editing by remember { mutableStateOf<Photo?>(null) }
@@ -109,8 +110,8 @@ fun KaleidoApp(settings: AppSettings) {
     // Grid positions survive opening the viewer and switching tabs. Each album starts fresh.
     val photosGrid = rememberLazyGridState()
     val albumGrid = remember(openAlbum) { LazyGridState() }
-    val photoList = remember(all, settings.sortOrder, starredOnly, settings.starred, query) {
-        all.visible(starredOnly, settings.starred, query, settings.sortOrder)
+    val photoList = remember(all, settings.sortOrder, starredOnly, videosOnly, settings.starred, query) {
+        all.visible(starredOnly, settings.starred, query, settings.sortOrder, videosOnly)
     }
     val albums = remember(all) { all.toAlbums() }
     val albumPhotos = remember(all, openAlbum, settings.sortOrder, settings.starred, starredOnly, query) {
@@ -280,6 +281,8 @@ fun KaleidoApp(settings: AppSettings) {
                 starred = settings.starred,
                 starredOnly = starredOnly,
                 onToggleStarredOnly = { starredOnly = !starredOnly },
+                videosOnly = videosOnly,
+                onToggleVideosOnly = if (withSearch) ({ videosOnly = !videosOnly }) else null,
             )
         }
     }
@@ -414,7 +417,9 @@ private fun List<Photo>.visible(
     starred: Set<Long>,
     query: String,
     order: SortOrder,
+    videosOnly: Boolean = false,
 ): List<Photo> = filter { !starredOnly || it.id in starred }
+    .filter { !videosOnly || it.isVideo }
     .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
     .arrangedBy(order)
 

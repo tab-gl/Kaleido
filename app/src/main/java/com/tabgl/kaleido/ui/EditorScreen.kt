@@ -1,5 +1,7 @@
 package com.tabgl.kaleido.ui
 
+import androidx.compose.ui.text.font.FontFamily
+import com.tabgl.kaleido.data.TextFont
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -360,6 +362,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                         color = Color(c.color),
                                         fontSize = with(density) { (c.size * w).toSp() },
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = c.font.family(),
                                     ),
                                 )
                             }
@@ -498,9 +501,9 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
         Panel.TEXT -> TextSheet(
             color = markColor,
             onColor = { markColor = it },
-            onAdd = { text ->
+            onAdd = { text, font ->
                 pendingText?.let { p ->
-                    commit(edit.copy(captions = edit.captions + Caption(p.x, p.y, text, markColor.toArgb(), 0.05f)))
+                    commit(edit.copy(captions = edit.captions + Caption(p.x, p.y, text, markColor.toArgb(), 0.05f, font)))
                 }
                 pendingText = null
                 panel = null
@@ -636,10 +639,11 @@ private fun ConvertSheet(edit: EditState, onChange: (EditState) -> Unit, onDismi
 private fun TextSheet(
     color: Color,
     onColor: (Color) -> Unit,
-    onAdd: (String) -> Unit,
+    onAdd: (String, TextFont) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
+    var font by remember { mutableStateOf(TextFont.SANS) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp),
@@ -659,7 +663,19 @@ private fun TextSheet(
             ) {
                 markColors.forEach { c -> ColorSwatch(color = c, selected = c == color) { onColor(c) } }
             }
-            Button(enabled = text.isNotBlank(), onClick = { onAdd(text.trim()) }) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextFont.entries.forEach { f ->
+                    FilterChip(
+                        selected = f == font,
+                        onClick = { font = f },
+                        label = { Text(f.label, fontFamily = f.family()) },
+                    )
+                }
+            }
+            Button(enabled = text.isNotBlank(), onClick = { onAdd(text.trim(), font) }) {
                 Text("Place on photo")
             }
         }
@@ -671,4 +687,11 @@ private fun cropRect(imgW: Int, imgH: Int, aspect: Float): NRect {
     val imgAspect = imgW.toFloat() / imgH
     val (w, h) = if (imgAspect > aspect) aspect / imgAspect to 1f else 1f to imgAspect / aspect
     return NRect((1f - w) / 2f, (1f - h) / 2f, (1f + w) / 2f, (1f + h) / 2f)
+}
+
+private fun TextFont.family(): FontFamily = when (this) {
+    TextFont.SANS -> FontFamily.SansSerif
+    TextFont.SERIF -> FontFamily.Serif
+    TextFont.MONO -> FontFamily.Monospace
+    TextFont.CURSIVE -> FontFamily.Cursive
 }

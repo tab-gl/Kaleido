@@ -261,6 +261,8 @@ fun GalleryScreen(
     starred: Set<Long> = emptySet(),
     starredOnly: Boolean = false,
     onToggleStarredOnly: (() -> Unit)? = null,
+    videosOnly: Boolean = false,
+    onToggleVideosOnly: (() -> Unit)? = null,
     headline: String? = null,
     gridState: LazyGridState = rememberLazyGridState(),
     subtitle: String? = null,
@@ -342,6 +344,13 @@ fun GalleryScreen(
                     label = { Text("Starred") },
                     leadingIcon = { HiIcon(R.drawable.hi_star, null, Color(0xFFFFC857), Modifier.size(18.dp)) },
                 )
+                if (onToggleVideosOnly != null) {
+                    FilterChip(
+                        selected = videosOnly,
+                        onClick = onToggleVideosOnly,
+                        label = { Text("Videos") },
+                    )
+                }
             }
         }
 

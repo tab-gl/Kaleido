@@ -40,7 +40,19 @@ data class NRect(val left: Float, val top: Float, val right: Float, val bottom: 
 data class Stroke(val points: List<Pt>, val color: Int, val width: Float)
 
 /** A text label whose top-left corner sits at ([x], [y]). [size] is a fraction of the photo's width. */
-data class Caption(val x: Float, val y: Float, val text: String, val color: Int, val size: Float)
+data class Caption(val x: Float, val y: Float, val text: String, val color: Int, val size: Float, val font: TextFont = TextFont.SANS)
+
+/** Font choices for text on a photo. Each maps to a bundled system family. */
+enum class TextFont(val label: String) {
+    SANS("Sans"), SERIF("Serif"), MONO("Mono"), CURSIVE("Script");
+
+    fun typeface(): Typeface = when (this) {
+        SANS -> Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        SERIF -> Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        MONO -> Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        CURSIVE -> Typeface.create("cursive", Typeface.BOLD)
+    }
+}
 
 enum class OutputFormat(val label: String, val mime: String, val extension: String, val compress: Bitmap.CompressFormat) {
     JPEG("JPEG", "image/jpeg", "jpg", Bitmap.CompressFormat.JPEG),
@@ -197,7 +209,7 @@ suspend fun saveEditedCopy(context: Context, source: Photo, edit: EditState): Ur
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = caption.color
                 textSize = caption.size * w
-                typeface = Typeface.DEFAULT_BOLD
+                typeface = caption.font.typeface()
             }
             canvas.drawText(caption.text, caption.x * w, caption.y * h - paint.ascent(), paint)
         }

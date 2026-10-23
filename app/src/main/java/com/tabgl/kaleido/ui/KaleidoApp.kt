@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,7 +90,7 @@ fun KaleidoApp(settings: AppSettings) {
     var photos by remember { mutableStateOf<List<Photo>?>(null) }
     var reloadTick by remember { mutableIntStateOf(0) }
 
-    var tab by remember { mutableStateOf(Tab.PHOTOS) }
+    var tab by rememberSaveable { mutableStateOf(Tab.PHOTOS) }
     var openAlbum by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -273,6 +274,7 @@ fun KaleidoApp(settings: AppSettings) {
                     onShare = { sharePhotos(context, list.filter { it.id in selected }) },
                     onDelete = { pendingDelete = list.filter { it.id in selected } },
                     onClear = { selected = emptySet() },
+                    onSelectAll = { selected = list.mapTo(mutableSetOf()) { it.id } },
                 ),
                 sort = SortControls(order = settings.sortOrder, onSelect = settings::saveSortOrder),
                 starred = settings.starred,

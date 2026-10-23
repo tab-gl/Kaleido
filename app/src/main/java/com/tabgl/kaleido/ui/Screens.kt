@@ -1,5 +1,10 @@
 package com.tabgl.kaleido.ui
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -74,6 +79,38 @@ data class SearchControls(
     val onQueryChange: (String) -> Unit,
 )
 
+/**
+ * In selection mode, dragging across tiles selects (or clears) each tile it passes over.
+ * The first tile under the finger decides whether this drag selects or clears.
+ */
+private fun Modifier.dragSelect(gridState: LazyGridState, selection: SelectionControls): Modifier = composed {
+    val current by rememberUpdatedState(selection)
+    pointerInput(gridState) {
+        var selecting = true
+        fun photoAt(point: Offset): Long? = gridState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+            point.x >= info.offset.x && point.x < info.offset.x + info.size.width &&
+                point.y >= info.offset.y && point.y < info.offset.y + info.size.height
+        }?.key as? Long
+
+        fun paint(id: Long) {
+            if ((id in current.selected) != selecting) current.onToggle(id)
+        }
+
+        detectDragGestures(
+            onDragStart = { point ->
+                photoAt(point)?.let { id ->
+                    selecting = id !in current.selected
+                    paint(id)
+                }
+            },
+            onDrag = { change, _ ->
+                change.consume()
+                photoAt(change.position)?.let(::paint)
+            },
+        )
+    }
+}
+
 /** Multi-select state: picked photo ids and the bulk actions for them. */
 data class SelectionControls(
     val selected: Set<Long>,
@@ -83,6 +120,7 @@ data class SelectionControls(
     val onShare: () -> Unit,
     val onDelete: () -> Unit,
     val onClear: () -> Unit,
+    val onSelectAll: () -> Unit,
 )
 
 /** Sort order for a gallery, and the action that picks a new one. */
@@ -253,6 +291,9 @@ fun GalleryScreen(
                     }
                 }
                 if (active != null) {
+                    IconButton(onClick = active.onSelectAll) {
+                        HiIcon(R.drawable.hi_check, "Select all", tint)
+                    }
                     IconButton(onClick = active.onStar) {
                         HiIcon(
                             icon = R.drawable.hi_star,
@@ -338,7 +379,9 @@ fun GalleryScreen(
                 contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(
+                    if (selection != null && active != null) Modifier.dragSelect(gridState, selection) else Modifier,
+                ),
             ) {
                 sections.forEach { section ->
                     if (!byName) {

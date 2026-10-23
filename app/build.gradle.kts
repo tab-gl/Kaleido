@@ -98,6 +98,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.exifinterface)
     debugImplementation(libs.androidx.ui.tooling)

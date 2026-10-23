@@ -1,5 +1,8 @@
 package com.tabgl.kaleido.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -64,7 +67,6 @@ fun SettingsScreen(
     albumNames: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull().orEmpty()
@@ -209,17 +211,17 @@ fun SettingsScreen(
         ListItem(
             headlineContent = { Text("Source code") },
             supportingContent = { Text("github.com/tab-gl/Kaleido") },
-            modifier = Modifier.clickable { uriHandler.openUri(REPO_URL) },
+            modifier = Modifier.clickable { openLink(context, REPO_URL) },
         )
         ListItem(
             headlineContent = { Text("License") },
             supportingContent = { Text("MIT") },
-            modifier = Modifier.clickable { uriHandler.openUri("$REPO_URL/blob/main/LICENSE") },
+            modifier = Modifier.clickable { openLink(context, "$REPO_URL/blob/main/LICENSE") },
         )
         ListItem(
             headlineContent = { Text("Icons") },
             supportingContent = { Text("Hugeicons") },
-            modifier = Modifier.clickable { uriHandler.openUri(HUGEICONS_URL) },
+            modifier = Modifier.clickable { openLink(context, HUGEICONS_URL) },
         )
     }
 
@@ -365,4 +367,9 @@ private fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp),
     )
+}
+
+private fun openLink(context: Context, url: String) {
+    // A device with no browser must not crash the settings screen.
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }

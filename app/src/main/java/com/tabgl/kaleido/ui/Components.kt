@@ -130,7 +130,7 @@ fun PhotoTile(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inset)
-                .clip(RoundedCornerShape(if (selected) 14.dp else 0.dp)),
+                .clip(RoundedCornerShape(16.dp)),
         )
         if (selected) {
             Box(

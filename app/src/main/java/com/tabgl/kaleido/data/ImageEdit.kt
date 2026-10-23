@@ -58,6 +58,9 @@ data class EditState(
     val brightness: Float = 0f,
     val contrast: Float = 1f,
     val saturation: Float = 1f,
+    val warmth: Float = 0f,
+    val grayscale: Boolean = false,
+    val straighten: Float = 0f,
     val crop: NRect? = null,
     val blurs: List<NRect> = emptyList(),
     val strokes: List<Stroke> = emptyList(),
@@ -66,11 +69,19 @@ data class EditState(
     val quality: Int = 92,
 ) {
     /** Row-major 4x5 colour matrix for brightness, contrast and saturation (offsets in 0..255). */
-    fun colorMatrix(): FloatArray = multiply(
-        offsetMatrix(brightness * 255f),
-        multiply(contrastMatrix(contrast), saturationMatrix(saturation)),
-    )
+    fun colorMatrix(): FloatArray {
+        val tone = multiply(contrastMatrix(contrast), saturationMatrix(if (grayscale) 0f else saturation))
+        return multiply(offsetMatrix(brightness * 255f), multiply(warmthMatrix(warmth), tone))
+    }
 }
+
+/** Pushes red up and blue down for warm (positive) or cool (negative) light. */
+private fun warmthMatrix(w: Float) = floatArrayOf(
+    1f + 0.25f * w, 0f, 0f, 0f, 0f,
+    0f, 1f, 0f, 0f, 0f,
+    0f, 0f, 1f - 0.25f * w, 0f, 0f,
+    0f, 0f, 0f, 1f, 0f,
+)
 
 private fun saturationMatrix(s: Float) = floatArrayOf(
     0.213f + 0.787f * s, 0.715f - 0.715f * s, 0.072f - 0.072f * s, 0f, 0f,
@@ -202,9 +213,9 @@ suspend fun saveEditedCopy(context: Context, source: Photo, edit: EditState): Ur
             if (cropped !== out) out.recycle()
             out = cropped
         }
-        if (edit.rotation != 0 || edit.flipX) {
+        if (edit.rotation != 0 || edit.flipX || edit.straighten != 0f) {
             val matrix = Matrix().apply {
-                postRotate(edit.rotation.toFloat())
+                postRotate(edit.rotation.toFloat() + edit.straighten)
                 if (edit.flipX) postScale(-1f, 1f)
             }
             val turned = Bitmap.createBitmap(out, 0, 0, out.width, out.height, matrix, true)

@@ -225,6 +225,8 @@ fun GalleryScreen(
     onToggleStarredOnly: (() -> Unit)? = null,
     headline: String? = null,
     gridState: LazyGridState = rememberLazyGridState(),
+    subtitle: String? = null,
+    onImport: (() -> Unit)? = null,
 ) {
     val byName = sort?.order == SortOrder.NAME
     val sections = remember(photos, byName) {
@@ -241,9 +243,14 @@ fun GalleryScreen(
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
             title = if (active != null) "${active.selected.size} selected" else headline ?: title,
-            subtitle = if (active != null) "Tap photos to add or remove" else itemCountLabel(photos.size),
+            subtitle = if (active != null) "Tap photos to add or remove" else subtitle ?: itemCountLabel(photos.size),
             onBack = if (active != null) null else onBack,
             actions = {
+                if (active == null && onImport != null) {
+                    IconButton(onClick = onImport) {
+                        HiIcon(R.drawable.hi_add, "Import photos", tint)
+                    }
+                }
                 if (active != null) {
                     IconButton(onClick = active.onStar) {
                         HiIcon(

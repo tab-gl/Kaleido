@@ -3,6 +3,7 @@ package com.tabgl.kaleido
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.SvgDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 
@@ -19,6 +20,7 @@ class KaleidoApplication : Application(), ImageLoaderFactory {
                 .maxSizeBytes(256L * 1024 * 1024)
                 .build()
         }
+        .components { add(SvgDecoder.Factory()) }
         .allowRgb565(true)
         .crossfade(false)
         .build()

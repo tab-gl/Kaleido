@@ -66,6 +66,13 @@ private val MilkOrangeDark = darkColorScheme(
     surfaceContainerHighest = Color(0xFF4A3322),
     outline = Color(0xFF9C8068),
     outlineVariant = NightHigh,
+    surfaceDim = NightBrown,
+    surfaceBright = Color(0xFF4A3322),
+    surfaceContainerLowest = Color(0xFF170E07),
+    surfaceTint = OrangeLight,
+    inverseSurface = MilkSoft,
+    inverseOnSurface = Espresso,
+    inversePrimary = OrangeDeep,
 )
 
 @Composable
@@ -103,6 +110,7 @@ fun KaleidoTheme(
 
     MaterialTheme(
         colorScheme = scheme,
+        typography = AppTypography,
         typography = Typography(),
         content = content,
     )

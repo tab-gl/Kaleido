@@ -20,7 +20,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import android.widget.Toast
+import com.tabgl.kaleido.data.importPictures
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import java.time.LocalTime
@@ -130,6 +136,19 @@ fun KaleidoApp(settings: AppSettings) {
         reloadTick++
     }
 
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                val imported = importPictures(context, uris)
+                reloadTick++
+                Toast.makeText(context, "Imported $imported of ${uris.size}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val importAction: () -> Unit = { importLauncher.launch(IMPORT_TYPES) }
+
     // Returning from system Settings may have granted access.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -155,7 +174,7 @@ fun KaleidoApp(settings: AppSettings) {
         if (granted) {
             // Debounce: a burst of changes (a camera burst, a sync) loads once.
             delay(if (photos == null) 0L else 350L)
-            photos = MediaRepository.loadPhotos(context)
+            photos = runCatching { MediaRepository.loadPhotos(context) }.getOrDefault(emptyList())
         }
     }
 
@@ -221,6 +240,12 @@ fun KaleidoApp(settings: AppSettings) {
             GalleryScreen(
                 title = title,
                 headline = headline,
+                subtitle = if (headline != null) {
+                    settings.displayName.trim().takeIf { it.isNotEmpty() }?.let { "$it · ${itemCountLabel(list.size)}" }
+                } else {
+                    null
+                },
+                onImport = if (withSearch) importAction else null,
                 photos = list,
                 columns = settings.columns,
                 onCycleColumns = cycleColumns,
@@ -278,7 +303,7 @@ fun KaleidoApp(settings: AppSettings) {
                         list = photoList,
                         onBack = null,
                         withSearch = true,
-                        headline = greetingFor(LocalTime.now().hour, settings.displayName),
+                        headline = greetingFor(LocalTime.now().hour),
                         grid = photosGrid,
                     )
                 }
@@ -309,6 +334,16 @@ fun KaleidoApp(settings: AppSettings) {
             }
         }
 
+        // A soft fade behind the floating bar keeps photos from competing with its labels.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(120.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.background)),
+                ),
+        )
         FloatingNavBar(
             selected = tab,
             onSelect = { tab = it },
@@ -411,3 +446,8 @@ private fun timestampNow(): String =
     DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
         .format(Instant.now())
+
+private val IMPORT_TYPES = arrayOf(
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "image/heif", "image/heic", "image/svg+xml",
+)

@@ -36,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -211,7 +212,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                     onClick = {
                         scope.launch {
                             saving = true
-                            val uri = saveEditedCopy(context, photo, edit)
+                            val uri = runCatching { saveEditedCopy(context, photo, edit) }.getOrNull()
                             saving = false
                             Toast.makeText(
                                 context,
@@ -238,7 +239,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                             .aspectRatio(d.first.toFloat() / d.second)
                             .onSizeChanged { boxSize = it }
                             .graphicsLayer {
-                                rotationZ = if (comparing) 0f else edit.rotation.toFloat()
+                                rotationZ = if (comparing) 0f else edit.rotation + edit.straighten
                                 scaleX = if (!comparing && edit.flipX) -1f else 1f
                             }
                             .pointerInput(tool) {
@@ -408,6 +409,29 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                 }
             }
 
+            if (tool == Tool.CROP) {
+                val d = dims
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("Free" to null, "1:1" to 1f, "4:3" to 4f / 3f, "3:2" to 1.5f, "16:9" to 16f / 9f)
+                        .forEach { (label, aspect) ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    if (d != null) {
+                                        commit(edit.copy(crop = if (aspect == null) null else cropRect(d.first, d.second, aspect)))
+                                    }
+                                },
+                                label = { Text(label) },
+                            )
+                        }
+                }
+            }
             if (tool == Tool.MARKUP) {
                 Row(
                     modifier = Modifier
@@ -556,7 +580,17 @@ private fun AdjustSheet(edit: EditState, onChange: (EditState) -> Unit, onDismis
             SliderRow("Saturation", "%.2f".format(edit.saturation), edit.saturation, 0f..2f) {
                 onChange(edit.copy(saturation = it))
             }
-            TextButton(onClick = { onChange(edit.copy(brightness = 0f, contrast = 1f, saturation = 1f)) }) {
+            SliderRow("Warmth", "%.2f".format(edit.warmth), edit.warmth, -1f..1f) {
+                onChange(edit.copy(warmth = it))
+            }
+            SliderRow("Straighten", "%.1f°".format(edit.straighten), edit.straighten, -15f..15f) {
+                onChange(edit.copy(straighten = it))
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Black and white", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Switch(checked = edit.grayscale, onCheckedChange = { onChange(edit.copy(grayscale = it)) })
+            }
+            TextButton(onClick = { onChange(edit.copy(brightness = 0f, contrast = 1f, saturation = 1f, warmth = 0f, grayscale = false, straighten = 0f)) }) {
                 Text("Reset adjustments")
             }
         }
@@ -630,4 +664,11 @@ private fun TextSheet(
             }
         }
     }
+}
+
+/** A centred crop with the given width/height ratio, as large as the photo allows. */
+private fun cropRect(imgW: Int, imgH: Int, aspect: Float): NRect {
+    val imgAspect = imgW.toFloat() / imgH
+    val (w, h) = if (imgAspect > aspect) aspect / imgAspect to 1f else 1f to imgAspect / aspect
+    return NRect((1f - w) / 2f, (1f - h) / 2f, (1f + w) / 2f, (1f + h) / 2f)
 }

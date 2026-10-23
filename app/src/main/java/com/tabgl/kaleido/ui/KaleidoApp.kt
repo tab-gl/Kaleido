@@ -15,7 +15,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import java.time.LocalTime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -197,10 +203,17 @@ fun KaleidoApp(settings: AppSettings) {
 
     // One gallery for both the Photos tab and an open album. Selection, sort and star work the same in each.
     @Composable
-    fun Gallery(title: String, list: List<Photo>, onBack: (() -> Unit)?, withSearch: Boolean) {
+    fun Gallery(
+        title: String,
+        list: List<Photo>,
+        onBack: (() -> Unit)?,
+        withSearch: Boolean,
+        headline: String? = null,
+    ) {
         Box(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
             GalleryScreen(
                 title = title,
+                headline = headline,
                 photos = list,
                 columns = settings.columns,
                 onCycleColumns = cycleColumns,
@@ -244,11 +257,22 @@ fun KaleidoApp(settings: AppSettings) {
                 onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
             )
         } else {
-            when (tab) {
+            AnimatedContent(
+                targetState = tab,
+                label = "tabs",
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+            ) { currentTab ->
+            when (currentTab) {
                 Tab.PHOTOS -> if (photos == null) {
                     LoadingState()
                 } else {
-                    Gallery(title = "Photos", list = photoList, onBack = null, withSearch = true)
+                    Gallery(
+                        title = "Photos",
+                        list = photoList,
+                        onBack = null,
+                        withSearch = true,
+                        headline = greetingFor(LocalTime.now().hour, settings.displayName),
+                    )
                 }
 
                 Tab.ALBUMS -> when {
@@ -271,6 +295,7 @@ fun KaleidoApp(settings: AppSettings) {
                     syncMessage = syncMessage,
                     onSync = { startSync() },
                 )
+            }
             }
         }
 

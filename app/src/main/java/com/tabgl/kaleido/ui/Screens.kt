@@ -221,6 +221,7 @@ fun GalleryScreen(
     starred: Set<Long> = emptySet(),
     starredOnly: Boolean = false,
     onToggleStarredOnly: (() -> Unit)? = null,
+    headline: String? = null,
 ) {
     val byName = sort?.order == SortOrder.NAME
     val sections = remember(photos, byName) {
@@ -236,7 +237,7 @@ fun GalleryScreen(
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         ScreenHeader(
-            title = if (active != null) "${active.selected.size} selected" else title,
+            title = if (active != null) "${active.selected.size} selected" else headline ?: title,
             subtitle = if (active != null) "Tap photos to add or remove" else itemCountLabel(photos.size),
             onBack = if (active != null) null else onBack,
             actions = {

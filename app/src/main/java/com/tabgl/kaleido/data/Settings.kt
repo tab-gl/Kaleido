@@ -37,6 +37,7 @@ class AppSettings(private val prefs: SharedPreferences) {
     var webdavPassword by mutableStateOf(readPassword())
         private set
     var lastSync by mutableStateOf(prefs.getString(KEY_LAST_SYNC, "").orEmpty())
+    var displayName by mutableStateOf(prefs.getString(KEY_NAME, "").orEmpty())
         private set
 
     /** A short random tag that keeps this phone's uploads apart from other devices' on the same server. */
@@ -80,6 +81,11 @@ class AppSettings(private val prefs: SharedPreferences) {
             .apply()
     }
 
+    fun saveDisplayName(name: String) {
+        displayName = name.take(40)
+        prefs.edit().putString(KEY_NAME, displayName).apply()
+    }
+
     fun saveLastSync(text: String) {
         lastSync = text
         prefs.edit().putString(KEY_LAST_SYNC, text).apply()
@@ -118,6 +124,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_WEBDAV_USER = "webdav_user"
         const val KEY_WEBDAV_PASS = "webdav_pass"
         const val KEY_LAST_SYNC = "last_sync"
+        const val KEY_NAME = "display_name"
         const val KEY_DEVICE = "device_tag"
         const val KEY_SYNCED = "synced_ids"
         const val KEY_DOWNLOADED = "downloaded_names"

@@ -82,6 +82,16 @@ fun SettingsScreen(
     ) {
         ScreenHeader(title = "Settings", subtitle = "Look, sync and about")
 
+        SectionTitle("Profile")
+        OutlinedTextField(
+            value = settings.displayName,
+            onValueChange = settings::saveDisplayName,
+            label = { Text("Your name") },
+            supportingText = { Text("Shown in the greeting on Photos") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
+
         SectionTitle("Appearance")
         val themes = ThemeMode.entries
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {

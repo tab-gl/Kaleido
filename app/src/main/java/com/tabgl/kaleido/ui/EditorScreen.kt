@@ -1,5 +1,13 @@
 package com.tabgl.kaleido.ui
 
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipRect
+import com.tabgl.kaleido.data.previewBlur
+import kotlin.math.sqrt
 import androidx.compose.ui.text.font.FontFamily
 import com.tabgl.kaleido.data.TextFont
 import android.widget.Toast
@@ -132,6 +140,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
     // True while the before-view button is held: shows the untouched photo with no overlays.
     var comparing by remember { mutableStateOf(false) }
     var tool by remember { mutableStateOf(Tool.NONE) }
+    var markWidth by remember { mutableFloatStateOf(MARK_WIDTH) }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var pendingText by remember { mutableStateOf<Pt?>(null) }
     var markColor by remember { mutableStateOf(markColors[3]) }
@@ -140,6 +149,11 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     // Gesture drafts, in normalized photo space. They become history entries when the gesture ends.
     var draftRect by remember { mutableStateOf<NRect?>(null) }
+    // Which crop corner is being dragged: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right, -1 none.
+    var cornerDrag by remember { mutableIntStateOf(-1) }
+    val blurPreview by produceState<ImageBitmap?>(null, photo.id) {
+        value = withContext(Dispatchers.IO) { previewBlur(context, photo.uri)?.asImageBitmap() }
+    }
     var draftStroke by remember { mutableStateOf<List<Pt>>(emptyList()) }
 
     LaunchedEffect(photo.uri) {
@@ -249,16 +263,37 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                     Tool.CROP, Tool.BLUR -> detectDragGestures(
                                         onDragStart = { p ->
                                             val n = normalize(p, boxSize)
-                                            draftRect = NRect(n.x, n.y, n.x, n.y)
+                                            val crop = edit.crop
+                                            val corner = if (tool == Tool.CROP && crop != null) {
+                                                nearestCorner(
+                                                    crop,
+                                                    n,
+                                                    boxSize.width.toFloat(),
+                                                    boxSize.height.toFloat(),
+                                                    with(density) { 36.dp.toPx() },
+                                                )
+                                            } else {
+                                                -1
+                                            }
+                                            cornerDrag = corner
+                                            draftRect = if (corner >= 0 && crop != null) crop else NRect(n.x, n.y, n.x, n.y)
                                         },
                                         onDrag = { change, _ ->
                                             change.consume()
                                             val n = normalize(change.position, boxSize)
-                                            draftRect = draftRect?.copy(right = n.x, bottom = n.y)
+                                            draftRect = draftRect?.let { r ->
+                                                when (cornerDrag) {
+                                                    0 -> r.copy(left = n.x, top = n.y)
+                                                    1 -> r.copy(right = n.x, top = n.y)
+                                                    2 -> r.copy(left = n.x, bottom = n.y)
+                                                    else -> r.copy(right = n.x, bottom = n.y)
+                                                }
+                                            }
                                         },
                                         onDragEnd = {
                                             val r = draftRect?.normalized()
                                             draftRect = null
+                                            cornerDrag = -1
                                             if (r != null && r.isBig()) {
                                                 if (tool == Tool.CROP) {
                                                     commit(edit.copy(crop = r))
@@ -267,7 +302,10 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                                 }
                                             }
                                         },
-                                        onDragCancel = { draftRect = null },
+                                        onDragCancel = {
+                                            draftRect = null
+                                            cornerDrag = -1
+                                        },
                                     )
 
                                     Tool.MARKUP -> detectDragGestures(
@@ -283,7 +321,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                                 commit(
                                                     edit.copy(
                                                         strokes = edit.strokes +
-                                                            MarkStroke(pts, markColor.toArgb(), MARK_WIDTH),
+                                                            MarkStroke(pts, markColor.toArgb(), markWidth),
                                                     ),
                                                 )
                                             }
@@ -323,7 +361,7 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                     path = path,
                                     color = color,
                                     style = Stroke(
-                                        width = MARK_WIDTH * w,
+                                        width = markWidth * w,
                                         cap = StrokeCap.Round,
                                         join = StrokeJoin.Round,
                                     ),
@@ -336,7 +374,11 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                                 val n = r.normalized()
                                 val topLeft = Offset(n.left * w, n.top * h)
                                 val rectSize = Size((n.right - n.left) * w, (n.bottom - n.top) * h)
-                                drawRect(color = Color.White.copy(alpha = 0.35f), topLeft = topLeft, size = rectSize)
+                                blurPreview?.let { bp ->
+                                    clipRect(topLeft.x, topLeft.y, topLeft.x + rectSize.width, topLeft.y + rectSize.height) {
+                                        drawImage(bp, dstSize = IntSize(w.toInt(), h.toInt()))
+                                    }
+                                }
                                 drawRect(
                                     color = Color.White,
                                     topLeft = topLeft,
@@ -445,6 +487,13 @@ fun EditorScreen(photo: Photo, onDismiss: () -> Unit, onSaved: () -> Unit) {
                 ) {
                     markColors.forEach { c ->
                         ColorSwatch(color = c, selected = c == markColor) { markColor = c }
+                    }
+                    listOf("Thin" to 0.006f, "Medium" to MARK_WIDTH, "Thick" to 0.026f).forEach { (label, width) ->
+                        FilterChip(
+                            selected = markWidth == width,
+                            onClick = { markWidth = width },
+                            label = { Text(label) },
+                        )
                     }
                 }
             }
@@ -694,4 +743,29 @@ private fun TextFont.family(): FontFamily = when (this) {
     TextFont.SERIF -> FontFamily.Serif
     TextFont.MONO -> FontFamily.Monospace
     TextFont.CURSIVE -> FontFamily.Cursive
+}
+
+/**
+ * Index of the crop corner the finger is on, or -1. Reach is in pixels, so corners are easy to grab on any screen.
+ * 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right.
+ */
+private fun nearestCorner(crop: NRect, touch: Pt, widthPx: Float, heightPx: Float, reachPx: Float): Int {
+    val corners = listOf(
+        crop.left to crop.top,
+        crop.right to crop.top,
+        crop.left to crop.bottom,
+        crop.right to crop.bottom,
+    )
+    var best = -1
+    var bestDistance = reachPx
+    corners.forEachIndexed { index, (x, y) ->
+        val dx = (touch.x - x) * widthPx
+        val dy = (touch.y - y) * heightPx
+        val distance = sqrt(dx * dx + dy * dy)
+        if (distance <= bestDistance) {
+            best = index
+            bestDistance = distance
+        }
+    }
+    return best
 }

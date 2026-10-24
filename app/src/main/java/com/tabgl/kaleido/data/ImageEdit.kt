@@ -304,13 +304,13 @@ private fun exifRotation(context: Context, uri: Uri): Int =
     }.getOrDefault(0)
 
 /** Decodes the photo at most [MAX_EDGE_PX] on its longest side, with EXIF rotation applied. */
-private fun decodeOriented(context: Context, uri: Uri): Bitmap? {
+private fun decodeOriented(context: Context, uri: Uri, maxEdge: Int = MAX_EDGE_PX): Bitmap? {
     val resolver = context.contentResolver
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
     var sample = 1
-    while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_EDGE_PX) sample *= 2
+    while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdge) sample *= 2
     val options = BitmapFactory.Options().apply {
         inSampleSize = sample
         inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -330,3 +330,6 @@ private fun fastBlur(src: Bitmap): Bitmap {
     val small = Bitmap.createScaledBitmap(src, max(1, src.width / 24), max(1, src.height / 24), true)
     return Bitmap.createScaledBitmap(small, src.width, src.height, true)
 }
+
+/** A small blurred copy of the photo, shown inside blur regions while editing. Same orientation as the editor. */
+fun previewBlur(context: Context, uri: Uri): Bitmap? = decodeOriented(context, uri, 256)?.let { fastBlur(it) }

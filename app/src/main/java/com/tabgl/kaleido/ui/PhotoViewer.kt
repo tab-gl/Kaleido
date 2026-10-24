@@ -67,6 +67,7 @@ fun PhotoViewer(
     onToggleStar: (Photo) -> Unit,
     onEdit: (Photo) -> Unit,
     onDelete: (Photo) -> Unit,
+    onVault: (Photo) -> Unit,
 ) {
     val context = LocalContext.current
     val pagerState = rememberPagerState(
@@ -151,6 +152,7 @@ fun PhotoViewer(
                                 tint = if (isStarred) Color(0xFFFFC857) else MaterialTheme.colorScheme.onSurface,
                             ) { onToggleStar(current) }
                             PillAction(R.drawable.hi_info, "Details") { infoOpen = true }
+                            if (!current.isVideo) PillAction(R.drawable.hi_lock, "Vault") { onVault(current) }
                             PillAction(R.drawable.hi_share, "Share") { sharePhotos(context, listOf(current)) }
                             if (!current.isVideo) PillAction(R.drawable.hi_edit, "Edit") { onEdit(current) }
                             PillAction(

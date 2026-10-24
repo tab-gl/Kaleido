@@ -121,6 +121,7 @@ data class SelectionControls(
     val onDelete: () -> Unit,
     val onClear: () -> Unit,
     val onSelectAll: () -> Unit,
+    val onVault: () -> Unit,
 )
 
 /** Sort order for a gallery, and the action that picks a new one. */
@@ -302,6 +303,9 @@ fun GalleryScreen(
                             contentDescription = if (active.allStarred) "Unstar selected" else "Star selected",
                             tint = if (active.allStarred) Color(0xFFFFC857) else tint,
                         )
+                    }
+                    IconButton(onClick = active.onVault) {
+                        HiIcon(R.drawable.hi_lock, "Move to vault", tint)
                     }
                     IconButton(onClick = active.onShare) {
                         HiIcon(R.drawable.hi_share, "Share selected", tint)

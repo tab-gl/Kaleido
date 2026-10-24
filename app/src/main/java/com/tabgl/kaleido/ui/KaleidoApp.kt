@@ -1,5 +1,6 @@
 package com.tabgl.kaleido.ui
 
+import com.tabgl.kaleido.data.Vault
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -96,6 +97,7 @@ fun KaleidoApp(settings: AppSettings) {
     var query by remember { mutableStateOf("") }
     var starredOnly by remember { mutableStateOf(false) }
     var videosOnly by remember { mutableStateOf(false) }
+    var vaultOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(emptySet<Long>()) }
     var viewing by remember { mutableStateOf<Pair<List<Photo>, Int>?>(null) }
     var editing by remember { mutableStateOf<Photo?>(null) }
@@ -206,6 +208,24 @@ fun KaleidoApp(settings: AppSettings) {
         }
     }
 
+    /** Copies photos into the vault, then asks to delete the originals. Videos are not moved. */
+    fun moveToVault(targets: List<Photo>) {
+        if (targets.isEmpty()) return
+        scope.launch {
+            val moved = withContext(Dispatchers.IO) {
+                targets.filter { !it.isVideo && Vault.add(context, it.uri, it.name) }
+            }
+            if (moved.isEmpty()) {
+                Toast.makeText(context, "Only photos can go to the vault", Toast.LENGTH_SHORT).show()
+            } else {
+                val skipped = targets.size - moved.size
+                val note = if (skipped > 0) " ($skipped skipped)" else ""
+                Toast.makeText(context, "Moved ${moved.size} to vault$note", Toast.LENGTH_SHORT).show()
+                performDelete(moved)
+            }
+        }
+    }
+
     fun startSync() {
         scope.launch {
             syncing = true
@@ -276,6 +296,7 @@ fun KaleidoApp(settings: AppSettings) {
                     onDelete = { pendingDelete = list.filter { it.id in selected } },
                     onClear = { selected = emptySet() },
                     onSelectAll = { selected = list.mapTo(mutableSetOf()) { it.id } },
+                    onVault = { moveToVault(list.filter { it.id in selected }) },
                 ),
                 sort = SortControls(order = settings.sortOrder, onSelect = settings::saveSortOrder),
                 starred = settings.starred,
@@ -335,6 +356,7 @@ fun KaleidoApp(settings: AppSettings) {
                     syncMessage = syncMessage,
                     onSync = { startSync() },
                     albumNames = albumNames,
+                    onOpenVault = { vaultOpen = true },
                 )
             }
             }
@@ -375,6 +397,10 @@ fun KaleidoApp(settings: AppSettings) {
                 viewing = null
                 pendingDelete = listOf(it)
             },
+            onVault = {
+                viewing = null
+                moveToVault(listOf(it))
+            },
         )
     }
 
@@ -387,6 +413,13 @@ fun KaleidoApp(settings: AppSettings) {
                 reloadTick++
             },
         )
+    }
+
+    if (vaultOpen) {
+        VaultScreen(onDismiss = {
+            vaultOpen = false
+            reloadTick++
+        })
     }
 
     pendingDelete?.let { targets ->

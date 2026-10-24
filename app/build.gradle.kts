@@ -100,6 +100,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
     implementation(libs.coil.video)
+    implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.exifinterface)
     debugImplementation(libs.androidx.ui.tooling)

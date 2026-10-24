@@ -3,7 +3,12 @@ package com.tabgl.kaleido.data
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.security.KeyStore
+import javax.crypto.CipherInputStream
+import javax.crypto.CipherOutputStream
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -46,5 +51,30 @@ object SecureStore {
             init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         }
         return String(cipher.doFinal(data), Charsets.UTF_8)
+    }
+
+    /** Encrypts a stream as it is written. The IV goes first so [decryptingStream] can read it back. */
+    fun encryptingStream(out: OutputStream): OutputStream {
+        val cipher = Cipher.getInstance(TRANSFORM).apply { init(Cipher.ENCRYPT_MODE, key()) }
+        out.write(cipher.iv)
+        return CipherOutputStream(out, cipher)
+    }
+
+    /** Reads back a stream made by [encryptingStream]. */
+    fun decryptingStream(input: InputStream): InputStream {
+        val iv = ByteArray(IV_BYTES)
+        var read = 0
+        while (read < IV_BYTES) {
+            val n = input.read(iv, read, IV_BYTES - read)
+            if (n < 0) {
+                input.close()
+                throw IOException("Vault file is truncated")
+            }
+            read += n
+        }
+        val cipher = Cipher.getInstance(TRANSFORM).apply {
+            init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        }
+        return CipherInputStream(input, cipher)
     }
 }

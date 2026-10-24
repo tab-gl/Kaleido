@@ -69,6 +69,7 @@ fun SettingsScreen(
     syncMessage: String,
     onSync: () -> Unit,
     albumNames: List<String> = emptyList(),
+    onOpenVault: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val version = remember {
@@ -163,6 +164,13 @@ fun SettingsScreen(
                 )
             },
             modifier = Modifier.clickable { hiddenOpen = true },
+        )
+
+        SectionTitle("Privacy")
+        ListItem(
+            headlineContent = { Text("Vault") },
+            supportingContent = { Text("Photos locked behind your fingerprint or screen lock") },
+            modifier = Modifier.clickable { onOpenVault() },
         )
 
         SectionTitle("Cloud")

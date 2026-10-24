@@ -135,7 +135,7 @@ private fun multiply(a: FloatArray, b: FloatArray): FloatArray {
     return out
 }
 
-private const val MAX_EDGE_PX = 4096
+private const val MAX_EDGE_PX = 2560
 
 /** Width and height of the photo as it is shown (EXIF rotation applied), or null if unreadable. */
 fun orientedSize(context: Context, uri: Uri): Pair<Int, Int>? {
